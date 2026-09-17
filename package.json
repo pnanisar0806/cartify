@@ -9,7 +9,10 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "git:init": "git init && git add -A && git commit -m \"feat: complete Cartify recipe-to-cart app with URL extraction\"",
-    "git:status": "git status"
+    "git:status": "git status",
+    "git:commit": "git add package.json && git commit -m \"chore: add gh scripts to package.json\"",
+    "gh:status": "gh auth status",
+    "gh:create": "gh repo create cartify --public --source=. --remote=origin --push"
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.2.0",
