@@ -403,34 +403,25 @@ export default function DemoPage() {
   }
 
   // Start Reel with synchronized Google AI Studio Achernar voice
-  async function startReel(onComplete?: () => void) {
+  async function startReel(onComplete?: () => void, customAudio?: HTMLAudioElement) {
     clearAllTimers();
     setDisplayText("");
 
+    let audioUrl: string | null = null;
     if (voiceMode === "achernar") {
-      let audioUrl: string | null = audioCache[currentScript.id] || null;
+      audioUrl = audioCache[currentScript.id] || null;
       if (!audioUrl) {
         audioUrl = await fetchAchernarAudio(currentScript);
       }
+    }
 
-      if (!audioUrl) {
-        setStep("idle");
-        onComplete?.();
-        return;
-      }
-
-      if (activeAudioRef.current) {
-        activeAudioRef.current.pause();
-        activeAudioRef.current.currentTime = 0;
-      }
-
-      const audio = new Audio(audioUrl);
+    if (customAudio || audioUrl) {
+      const audio = customAudio || new Audio(audioUrl!);
       activeAudioRef.current = audio;
 
       audio.onerror = (e) => {
         console.error("Audio playback error:", e);
-        setAudioError("Unable to play audio. Click Start Reel to retry.");
-        setStep("idle");
+        setAudioError("Unable to play audio. Falling back to visual animation.");
         onComplete?.();
       };
 
@@ -479,12 +470,11 @@ export default function DemoPage() {
         await audio.play();
       } catch (err) {
         console.warn("Audio play issue:", err);
-        setAudioError("Audio generated! Click 'Start Reel' to start.");
-        setStep("idle");
+        setAudioError("Audio playing issue. Click to retry.");
         onComplete?.();
       }
     } else {
-      // Browser Speech Synthesis fallback mode
+      // Browser Speech Synthesis / Timer fallback mode (always runs and never aborts)
       setStep("hook");
       setCurrentCaption(currentScript.voiceover.hook);
       speakBrowserText(currentScript.voiceover.hook, () => {
@@ -526,11 +516,14 @@ export default function DemoPage() {
     if (typeof window === "undefined") return;
 
     try {
-      // 1. Ensure Achernar voiceover is ready
+      // 1. Ensure Achernar voiceover is ready if enabled
       let audioUrl = audioCache[currentScript.id] || null;
       if (voiceMode === "achernar" && !audioUrl) {
-        audioUrl = await fetchAchernarAudio(currentScript);
-        if (!audioUrl) return;
+        try {
+          audioUrl = await fetchAchernarAudio(currentScript);
+        } catch {
+          audioUrl = null;
+        }
       }
 
       const canvas = canvasRef.current;
@@ -561,10 +554,16 @@ export default function DemoPage() {
         }
       }
 
-      // 3. Audio routing: mix Achernar audio directly into the recorded video stream
+      // 3. Unified Audio routing: create single audio element & connect to recorder
       let streamToRecord: MediaStream = canvasStream;
+      let sharedAudioElement: HTMLAudioElement | undefined = undefined;
+
       if (audioUrl) {
         try {
+          const audio = new Audio(audioUrl);
+          audio.crossOrigin = "anonymous";
+          sharedAudioElement = audio;
+
           if (!audioContextRef.current) {
             audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
           }
@@ -572,15 +571,11 @@ export default function DemoPage() {
           if (audioCtx.state === "suspended") {
             await audioCtx.resume();
           }
+
+          const source = audioCtx.createMediaElementSource(audio);
           const dest = audioCtx.createMediaStreamDestination();
-          const resp = await fetch(audioUrl);
-          const arrayBuf = await resp.arrayBuffer();
-          const decodedAudio = await audioCtx.decodeAudioData(arrayBuf);
-          const audioSource = audioCtx.createBufferSource();
-          audioSource.buffer = decodedAudio;
-          audioSource.connect(dest);
-          audioSource.connect(audioCtx.destination);
-          audioSource.start(0);
+          source.connect(dest);
+          source.connect(audioCtx.destination);
 
           streamToRecord = new MediaStream([
             ...canvasStream.getVideoTracks(),
@@ -629,7 +624,7 @@ export default function DemoPage() {
         if (recorder.state !== "inactive") {
           recorder.stop();
         }
-      });
+      }, sharedAudioElement);
     } catch (err) {
       console.warn("Silent video capture failed:", err);
       setIsRecording(false);
@@ -678,175 +673,206 @@ export default function DemoPage() {
       </div>
 
       <div className="flex w-full max-w-5xl flex-col items-center gap-8 lg:flex-row lg:items-start lg:justify-center">
-        {/* Phone Mockup Frame (9:16 aspect ratio: 370px x 780px) */}
-        <div className="relative flex h-[780px] w-[370px] shrink-0 flex-col overflow-hidden rounded-[44px] border-[5px] border-slate-700/80 bg-[#f6f9f7] shadow-[0_25px_60px_rgba(0,0,0,0.6)] text-slate-900">
-          {/* Recording Badge Overlay */}
-          {isRecording && (
-            <div className="absolute top-12 left-4 right-4 z-40 flex items-center justify-between rounded-full bg-rose-600 px-3 py-1 text-[10px] font-bold text-white shadow-lg animate-pulse">
-              <span className="flex items-center gap-1.5">
-                <span className="h-2 w-2 rounded-full bg-white animate-ping" />
-                🔴 RECORDING REEL
-              </span>
-              <span>{currentScript.duration}</span>
-            </div>
-          )}
-
-          {/* Dynamic Island / Notch */}
-          <div className="flex h-11 items-center justify-between px-6 pt-2">
-            <span className="text-[11px] font-bold text-slate-500">9:41</span>
-            <div className="h-4 w-20 rounded-full bg-slate-900"></div>
-            <span className="text-[11px] font-bold text-slate-500">5G</span>
-          </div>
-
-          {/* App Header */}
-          <div className="flex items-center justify-between border-b border-green-900/10 bg-white px-4 py-2.5">
-            <div className="flex items-center gap-2 text-base font-bold tracking-tight text-slate-900">
-              <ShoppingBasket className="h-5 w-5 text-emerald-700" />
-              Cartify<span className="text-emerald-700">.</span>
-            </div>
-            <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-800">
-              Instant Groceries
-            </span>
-          </div>
-
-          {/* Content Area */}
-          <div className="flex flex-1 flex-col overflow-y-auto px-4 py-3">
-            <div className="mb-3 text-center">
-              <h2 className="text-base font-bold tracking-tight text-slate-900">
-                {currentScript.isUrl ? "Recipe Link to Grocery Cart" : "Recipe to Grocery Cart"}
-              </h2>
-              <p className="text-[10px] text-slate-500">
-                1-click search on Swiggy, Blinkit, Amazon Fresh & Amazon Now
-              </p>
-
-            </div>
-
-            {/* Input Box */}
-            <div className="rounded-xl border border-green-900/10 bg-white p-3 shadow-xs">
-              <div className="mb-1 flex items-center justify-between">
-                <label className="text-[11px] font-semibold text-slate-700">
-                  {currentScript.isUrl ? "Recipe Web Link" : "What are you cooking?"}
-                </label>
-                {currentScript.isUrl && (
-                  <span className="flex items-center gap-1 text-[9px] font-medium text-emerald-700">
-                    <Globe className="h-2.5 w-2.5" /> Auto-extract
-                  </span>
-                )}
-              </div>
-
-              <div className="h-24 w-full rounded-lg border border-slate-200 bg-[#fbfcfb] p-2.5 text-[11px] leading-4 text-slate-800 overflow-hidden font-mono break-all">
-                {step === "idle" || step === "hook" ? (
-                  <span className="text-slate-400">
-                    {currentScript.isUrl ? "https://..." : "Paste recipe or ingredients..."}
-                  </span>
-                ) : (
-                  <span>
-                    {displayText}
-                    {step === "typing" && <span className="inline-block w-1.5 h-3 bg-emerald-600 animate-pulse ml-0.5" />}
-                  </span>
-                )}
-              </div>
-
-              <button
-                type="button"
-                className={`mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-semibold text-white transition-all shadow-xs ${
-                  step === "converting"
-                    ? "bg-emerald-700 animate-pulse"
-                    : "bg-emerald-700 hover:bg-emerald-800"
-                }`}
-              >
-                <Sparkles className="h-3 w-3" />
-                {step === "converting" ? "Extracting Groceries..." : "Convert to Shopping Links"}
-              </button>
-            </div>
-
-            {/* Results */}
-            <div className="mt-3 flex-1">
-              <div className="mb-1.5 flex items-center justify-between">
-                <span className="text-[11px] font-semibold text-slate-700">Instant Shopping List</span>
-                {step === "results" && (
-                  <span className="text-[10px] font-medium text-emerald-700">
-                    {currentScript.ingredients.length} items ready
-                  </span>
-                )}
-              </div>
-
-              {step !== "results" ? (
-                <div className="flex h-32 flex-col items-center justify-center rounded-xl border border-dashed border-green-900/20 p-4 text-center text-xs text-slate-400">
-                  <ShoppingBasket className="mb-1.5 h-5 w-5 text-slate-300" />
-                  <span className="text-[11px]">Store links will appear here</span>
-                </div>
-              ) : (
-                <div className="space-y-2 overflow-y-auto pb-20 max-h-[360px] pr-0.5">
-                  {currentScript.ingredients.map((item, idx) => (
-                    <div
-                      key={idx}
-                      className="flex flex-col gap-1.5 rounded-lg border border-green-900/10 bg-white p-2 shadow-xs transition-all hover:border-emerald-200"
-                    >
-                      <div className="flex items-center gap-1.5">
-                        <div className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-emerald-100">
-                          <Check className="h-2 w-2 text-emerald-700" />
-                        </div>
-                        <span className="text-xs font-semibold capitalize text-slate-800">
-                          {item}
-                        </span>
-                      </div>
-                      <div className="grid grid-cols-4 gap-1 pt-0.5">
-                        <a
-                          href={getSwiggyUrl(item)}
-                          target="_blank"
-                          rel="noreferrer"
-                          title="Swiggy Instamart"
-                          className="flex items-center justify-center rounded border border-orange-200/80 bg-white p-1 hover:bg-orange-50 shadow-2xs"
-                        >
-                          <SwiggyLogo className="h-3.5 w-auto" />
-                        </a>
-                        <a
-                          href={getBlinkitUrl(item)}
-                          target="_blank"
-                          rel="noreferrer"
-                          title="Blinkit"
-                          className="flex items-center justify-center rounded border border-amber-200/80 bg-white p-1 hover:bg-amber-50 shadow-2xs"
-                        >
-                          <BlinkitLogo className="h-3.5 w-auto" />
-                        </a>
-                        <a
-                          href={getAmazonFreshUrl(item)}
-                          target="_blank"
-                          rel="noreferrer"
-                          title="Amazon Fresh"
-                          className="flex items-center justify-center rounded border border-emerald-200/80 bg-white p-1 hover:bg-emerald-50 shadow-2xs"
-                        >
-                          <AmazonFreshLogo className="h-3.5 w-auto" />
-                        </a>
-                        <a
-                          href={getAmazonNowUrl(item)}
-                          target="_blank"
-                          rel="noreferrer"
-                          title="Amazon Now"
-                          className="flex items-center justify-center rounded border border-slate-200 bg-white p-1 hover:bg-slate-50 shadow-2xs"
-                        >
-                          <AmazonNowLogo className="h-3.5 w-auto" />
-                        </a>
-                      </div>
-
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Dynamic Viral Caption / Subtitle Overlay (TikTok/Reels style) */}
-          {currentCaption && (
-            <div className="absolute bottom-4 left-3 right-3 z-30 flex flex-col items-center">
-              <div className="rounded-2xl border border-white/20 bg-black/90 px-3.5 py-2 text-center shadow-xl backdrop-blur-md">
-                <span className="text-[11px] font-extrabold tracking-wide text-yellow-300 drop-shadow">
-                  🎙️ {currentCaption}
+        {/* Left Side: Phone Mockup Frame + Direct Download Button */}
+        <div className="flex flex-col items-center gap-3.5 shrink-0">
+          <div className="relative flex h-[780px] w-[370px] shrink-0 flex-col overflow-hidden rounded-[44px] border-[5px] border-slate-700/80 bg-[#f6f9f7] shadow-[0_25px_60px_rgba(0,0,0,0.6)] text-slate-900">
+            {/* Recording Badge Overlay */}
+            {isRecording && (
+              <div className="absolute top-12 left-4 right-4 z-40 flex items-center justify-between rounded-full bg-rose-600 px-3 py-1 text-[10px] font-bold text-white shadow-lg animate-pulse">
+                <span className="flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-full bg-white animate-ping" />
+                  🔴 RECORDING REEL
                 </span>
+                <span>{currentScript.duration}</span>
+              </div>
+            )}
+
+            {/* Dynamic Island / Notch */}
+            <div className="flex h-11 items-center justify-between px-6 pt-2">
+              <span className="text-[11px] font-bold text-slate-500">9:41</span>
+              <div className="h-4 w-20 rounded-full bg-slate-900"></div>
+              <span className="text-[11px] font-bold text-slate-500">5G</span>
+            </div>
+
+            {/* App Header */}
+            <div className="flex items-center justify-between border-b border-green-900/10 bg-white px-4 py-2.5">
+              <div className="flex items-center gap-2 text-base font-bold tracking-tight text-slate-900">
+                <ShoppingBasket className="h-5 w-5 text-emerald-700" />
+                Cartify<span className="text-emerald-700">.</span>
+              </div>
+              <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-800">
+                Instant Groceries
+              </span>
+            </div>
+
+            {/* Content Area */}
+            <div className="flex flex-1 flex-col overflow-y-auto px-4 py-3">
+              <div className="mb-3 text-center">
+                <h2 className="text-base font-bold tracking-tight text-slate-900">
+                  {currentScript.isUrl ? "Recipe Link to Grocery Cart" : "Recipe to Grocery Cart"}
+                </h2>
+                <p className="text-[10px] text-slate-500">
+                  1-click search on Swiggy, Blinkit, Amazon Fresh & Amazon Now
+                </p>
+
+              </div>
+
+              {/* Input Box */}
+              <div className="rounded-xl border border-green-900/10 bg-white p-3 shadow-xs">
+                <div className="mb-1 flex items-center justify-between">
+                  <label className="text-[11px] font-semibold text-slate-700">
+                    {currentScript.isUrl ? "Recipe Web Link" : "What are you cooking?"}
+                  </label>
+                  {currentScript.isUrl && (
+                    <span className="flex items-center gap-1 text-[9px] font-medium text-emerald-700">
+                      <Globe className="h-2.5 w-2.5" /> Auto-extract
+                    </span>
+                  )}
+                </div>
+
+                <div className="h-24 w-full rounded-lg border border-slate-200 bg-[#fbfcfb] p-2.5 text-[11px] leading-4 text-slate-800 overflow-hidden font-mono break-all">
+                  {step === "idle" || step === "hook" ? (
+                    <span className="text-slate-400">
+                      {currentScript.isUrl ? "https://..." : "Paste recipe or ingredients..."}
+                    </span>
+                  ) : (
+                    <span>
+                      {displayText}
+                      {step === "typing" && <span className="inline-block w-1.5 h-3 bg-emerald-600 animate-pulse ml-0.5" />}
+                    </span>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  className={`mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-semibold text-white transition-all shadow-xs ${
+                    step === "converting"
+                      ? "bg-emerald-700 animate-pulse"
+                      : "bg-emerald-700 hover:bg-emerald-800"
+                  }`}
+                >
+                  <Sparkles className="h-3 w-3" />
+                  {step === "converting" ? "Extracting Groceries..." : "Convert to Shopping Links"}
+                </button>
+              </div>
+
+              {/* Results */}
+              <div className="mt-3 flex-1">
+                <div className="mb-1.5 flex items-center justify-between">
+                  <span className="text-[11px] font-semibold text-slate-700">Instant Shopping List</span>
+                  {step === "results" && (
+                    <span className="text-[10px] font-medium text-emerald-700">
+                      {currentScript.ingredients.length} items ready
+                    </span>
+                  )}
+                </div>
+
+                {step !== "results" ? (
+                  <div className="flex h-32 flex-col items-center justify-center rounded-xl border border-dashed border-green-900/20 p-4 text-center text-xs text-slate-400">
+                    <ShoppingBasket className="mb-1.5 h-5 w-5 text-slate-300" />
+                    <span className="text-[11px]">Store links will appear here</span>
+                  </div>
+                ) : (
+                  <div className="space-y-2 overflow-y-auto pb-20 max-h-[360px] pr-0.5">
+                    {currentScript.ingredients.map((item, idx) => (
+                      <div
+                        key={idx}
+                        className="flex flex-col gap-1.5 rounded-lg border border-green-900/10 bg-white p-2 shadow-xs transition-all hover:border-emerald-200"
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <div className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-emerald-100">
+                            <Check className="h-2 w-2 text-emerald-700" />
+                          </div>
+                          <span className="text-xs font-semibold capitalize text-slate-800">
+                            {item}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-4 gap-1 pt-0.5">
+                          <a
+                            href={getSwiggyUrl(item)}
+                            target="_blank"
+                            rel="noreferrer"
+                            title="Swiggy Instamart"
+                            className="flex items-center justify-center rounded border border-orange-200/80 bg-white p-1 hover:bg-orange-50 shadow-2xs"
+                          >
+                            <SwiggyLogo className="h-3.5 w-auto" />
+                          </a>
+                          <a
+                            href={getBlinkitUrl(item)}
+                            target="_blank"
+                            rel="noreferrer"
+                            title="Blinkit"
+                            className="flex items-center justify-center rounded border border-amber-200/80 bg-white p-1 hover:bg-amber-50 shadow-2xs"
+                          >
+                            <BlinkitLogo className="h-3.5 w-auto" />
+                          </a>
+                          <a
+                            href={getAmazonFreshUrl(item)}
+                            target="_blank"
+                            rel="noreferrer"
+                            title="Amazon Fresh"
+                            className="flex items-center justify-center rounded border border-emerald-200/80 bg-white p-1 hover:bg-emerald-50 shadow-2xs"
+                          >
+                            <AmazonFreshLogo className="h-3.5 w-auto" />
+                          </a>
+                          <a
+                            href={getAmazonNowUrl(item)}
+                            target="_blank"
+                            rel="noreferrer"
+                            title="Amazon Now"
+                            className="flex items-center justify-center rounded border border-slate-200 bg-white p-1 hover:bg-slate-50 shadow-2xs"
+                          >
+                            <AmazonNowLogo className="h-3.5 w-auto" />
+                          </a>
+                        </div>
+
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
-          )}
+
+            {/* Dynamic Viral Caption / Subtitle Overlay (TikTok/Reels style) */}
+            {currentCaption && (
+              <div className="absolute bottom-4 left-3 right-3 z-30 flex flex-col items-center">
+                <div className="rounded-2xl border border-white/20 bg-black/90 px-3.5 py-2 text-center shadow-xl backdrop-blur-md">
+                  <span className="text-[11px] font-extrabold tracking-wide text-yellow-300 drop-shadow">
+                    🎙️ {currentCaption}
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Quick Record & Download Button directly under mockup screen */}
+          <div className="flex w-[370px] flex-col gap-2">
+            <Button
+              onClick={handleRecordAndDownload}
+              disabled={isRecording}
+              className="w-full h-12 gap-2 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-500 hover:to-teal-500 font-bold text-white shadow-xl text-sm rounded-2xl border border-emerald-400/30 transition-all hover:scale-[1.01]"
+            >
+              {isRecording ? (
+                <>
+                  <span className="relative flex h-3 w-3">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-3 w-3 bg-white"></span>
+                  </span>
+                  Recording Screen &amp; Audio ({currentScript.duration})...
+                </>
+              ) : (
+                <>
+                  <Download className="h-5 w-5 text-emerald-200" />
+                  Record Screen &amp; Download Video (.webm)
+                </>
+              )}
+            </Button>
+            {lastDownloadedVideo && (
+              <p className="text-center text-[11px] font-semibold text-emerald-400">
+                ✅ Saved to your Downloads: {lastDownloadedVideo}
+              </p>
+            )}
+          </div>
         </div>
 
         {/* Right Studio Controls */}
