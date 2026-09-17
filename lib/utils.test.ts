@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getSwiggyUrl, getBlinkitUrl } from "./utils";
+import { getSwiggyUrl, getBlinkitUrl, getAmazonFreshUrl } from "./utils";
 
 describe("Shopping link URL generators", () => {
   it("formats Swiggy Instamart URL with encoded query parameter", () => {
@@ -14,6 +14,20 @@ describe("Shopping link URL generators", () => {
     expect(getBlinkitUrl("soy sauce / tamari")).toBe(
       "https://blinkit.com/s/?q=soy%20sauce%20%2F%20tamari"
     );
+  });
+
+  it("formats Amazon Fresh URL with encoded query parameter and department filter", () => {
+    delete process.env.NEXT_PUBLIC_AMAZON_TAG;
+    expect(getAmazonFreshUrl("organic broccoli")).toBe(
+      "https://www.amazon.in/s?k=organic%20broccoli&i=nowstore"
+    );
+  });
+
+  it("appends Amazon Associates affiliate tag when configured", () => {
+    process.env.NEXT_PUBLIC_AMAZON_TAG = "cartify-21";
+    const url = getAmazonFreshUrl("paneer & butter");
+    expect(url).toBe("https://www.amazon.in/s?k=paneer%20%26%20butter&i=nowstore&tag=cartify-21");
+    delete process.env.NEXT_PUBLIC_AMAZON_TAG;
   });
 
   it("applies Cuelinks affiliate wrapping when configured", () => {
@@ -32,3 +46,4 @@ describe("Shopping link URL generators", () => {
     delete process.env.NEXT_PUBLIC_EARNKARO_ID;
   });
 });
+

@@ -38,4 +38,13 @@ export function getBlinkitUrl(ingredient: string): string {
   return wrapAffiliateUrl(directUrl);
 }
 
+export function getAmazonFreshUrl(ingredient: string): string {
+  const amazonTag = process.env.NEXT_PUBLIC_AMAZON_TAG;
+  const directUrl = `https://www.amazon.in/s?k=${encodeURIComponent(ingredient)}&i=nowstore`;
+  if (amazonTag && amazonTag.trim()) {
+    return `${directUrl}&tag=${encodeURIComponent(amazonTag.trim())}`;
+  }
+  return wrapAffiliateUrl(directUrl);
+}
+
 

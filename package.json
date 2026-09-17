@@ -8,7 +8,10 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "git:sync": "git add -A && git commit -m \"feat: add reel recording demo page and affiliate engine\" && git push origin main"
+    "git:status": "git status",
+    "git:add": "git add -A",
+    "git:sync": "git add -A && git commit -m \"feat: add Amazon Fresh affiliate integration and 9:16 AI voiceover reel studio\" && git push origin main",
+    "git:push": "git push origin main"
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.2.0",
