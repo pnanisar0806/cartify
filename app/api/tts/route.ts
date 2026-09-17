@@ -26,13 +26,18 @@ export async function POST(request: Request) {
       );
     }
 
-    // Try dedicated Gemini TTS model first, then fallback to gemini-2.0-flash
-    const candidateModels = ["gemini-2.5-flash-preview-tts", "gemini-2.0-flash"];
+    // Google AI Studio speech generation models
+    // gemini-2.0-flash is retired by Google in favor of gemini-3.6-flash and gemini-2.5-flash
+    const userModel = typeof body.model === "string" && body.model.trim() ? body.model.trim() : null;
+    const candidateModels = userModel
+      ? [userModel, "gemini-3.6-flash", "gemini-2.5-flash", "gemini-2.5-flash-preview-tts"]
+      : ["gemini-3.6-flash", "gemini-2.5-flash", "gemini-2.5-flash-preview-tts"];
     let lastError: string | null = null;
     let audioBuffer: Buffer | null = null;
     let finalMime = "audio/wav";
 
-    for (const model of candidateModels) {
+    for (const rawModel of candidateModels) {
+      const model = rawModel.replace(/^models\//, "");
       try {
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
         const response = await fetch(url, {

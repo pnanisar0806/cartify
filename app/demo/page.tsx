@@ -26,6 +26,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { getSwiggyUrl, getBlinkitUrl, getAmazonFreshUrl, getAmazonNowUrl } from "@/lib/utils";
 import { SwiggyLogo, BlinkitLogo, AmazonFreshLogo, AmazonNowLogo } from "@/components/store-logos";
+import { renderReelFrame } from "@/lib/reel-renderer";
 
 
 interface DemoScript {
@@ -182,6 +183,11 @@ export default function DemoPage() {
   const recordedChunksRef = useRef<Blob[]>([]);
   const mediaStreamRef = useRef<MediaStream | null>(null);
 
+  // Hidden 9:16 HD canvas for direct silent video recording (Zero browser popups!)
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const animFrameIdRef = useRef<number | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+
   // Browser voice fallback state
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [speechRate, setSpeechRate] = useState(1.1);
@@ -192,6 +198,57 @@ export default function DemoPage() {
   const activeAudioRef = useRef<HTMLAudioElement | null>(null);
   const typingTimerRef = useRef<NodeJS.Timeout | null>(null);
   const stepTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Keep references synced for high-frequency 30fps canvas rendering
+  const stepRef = useRef(step);
+  stepRef.current = step;
+  const displayTextRef = useRef(displayText);
+  displayTextRef.current = displayText;
+  const captionRef = useRef(currentCaption);
+  captionRef.current = currentCaption;
+  const currentScriptRef = useRef(currentScript);
+  currentScriptRef.current = currentScript;
+
+  // Render current phone state to 720x1280 9:16 canvas
+  function renderCurrentCanvas() {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    renderReelFrame(ctx, {
+      width: 720,
+      height: 1280,
+      step: stepRef.current,
+      title: currentScriptRef.current.title,
+      isUrl: currentScriptRef.current.isUrl,
+      input: currentScriptRef.current.input,
+      displayText: displayTextRef.current,
+      ingredients: currentScriptRef.current.ingredients,
+      caption: captionRef.current,
+      cursorVisible: true,
+    });
+  }
+
+  function startCanvasLoop() {
+    stopCanvasLoop();
+    function loop() {
+      renderCurrentCanvas();
+      animFrameIdRef.current = requestAnimationFrame(loop);
+    }
+    loop();
+  }
+
+  function stopCanvasLoop() {
+    if (animFrameIdRef.current) {
+      cancelAnimationFrame(animFrameIdRef.current);
+      animFrameIdRef.current = null;
+    }
+  }
+
+  // Update canvas on every React state change
+  useEffect(() => {
+    renderCurrentCanvas();
+  }, [step, displayText, currentCaption, currentScript]);
 
   // Load saved Gemini API key from localStorage
   useEffect(() => {
@@ -243,6 +300,7 @@ export default function DemoPage() {
 
   // Clean timers, streams, recorders and stop audio
   function clearAllTimers() {
+    stopCanvasLoop();
     if (typingTimerRef.current) clearInterval(typingTimerRef.current);
     if (stepTimerRef.current) clearTimeout(stepTimerRef.current);
     if (activeAudioRef.current) {
@@ -463,29 +521,31 @@ export default function DemoPage() {
     }
   }
 
-  // Handle in-browser screen recording and automatic video download
+  // 1-Click Silent Direct Video Export: Zero browser popups, captures only the left-hand phone video!
   async function handleRecordAndDownload() {
-    if (typeof window === "undefined" || !navigator.mediaDevices?.getDisplayMedia) {
-      alert("Screen recording is not supported in this browser. On Windows, you can also press Win + Alt + R to record!");
-      return;
-    }
+    if (typeof window === "undefined") return;
 
     try {
-      // Preload Achernar audio if needed before starting recording dialog
-      if (voiceMode === "achernar" && !audioCache[currentScript.id]) {
-        const audioUrl = await fetchAchernarAudio(currentScript);
+      // 1. Ensure Achernar voiceover is ready
+      let audioUrl = audioCache[currentScript.id] || null;
+      if (voiceMode === "achernar" && !audioUrl) {
+        audioUrl = await fetchAchernarAudio(currentScript);
         if (!audioUrl) return;
       }
 
-      // Prompt user to select screen / tab to record
-      const stream = await navigator.mediaDevices.getDisplayMedia({
-        video: {
-          displaySurface: "browser",
-        } as MediaTrackConstraints,
-        audio: true,
-      });
+      const canvas = canvasRef.current;
+      if (!canvas) {
+        setAudioError("Canvas preview is not available.");
+        return;
+      }
 
-      mediaStreamRef.current = stream;
+      // Initial frame & start 30fps canvas rendering loop
+      renderCurrentCanvas();
+      startCanvasLoop();
+
+      // 2. Direct Canvas Stream — Captures the left-hand phone video with ZERO permission prompts!
+      const canvasStream = canvas.captureStream(30);
+      mediaStreamRef.current = canvasStream;
       recordedChunksRef.current = [];
 
       let mimeType = "video/webm";
@@ -501,7 +561,37 @@ export default function DemoPage() {
         }
       }
 
-      const recorder = new MediaRecorder(stream, { mimeType });
+      // 3. Audio routing: mix Achernar audio directly into the recorded video stream
+      let streamToRecord: MediaStream = canvasStream;
+      if (audioUrl) {
+        try {
+          if (!audioContextRef.current) {
+            audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+          }
+          const audioCtx = audioContextRef.current;
+          if (audioCtx.state === "suspended") {
+            await audioCtx.resume();
+          }
+          const dest = audioCtx.createMediaStreamDestination();
+          const resp = await fetch(audioUrl);
+          const arrayBuf = await resp.arrayBuffer();
+          const decodedAudio = await audioCtx.decodeAudioData(arrayBuf);
+          const audioSource = audioCtx.createBufferSource();
+          audioSource.buffer = decodedAudio;
+          audioSource.connect(dest);
+          audioSource.connect(audioCtx.destination);
+          audioSource.start(0);
+
+          streamToRecord = new MediaStream([
+            ...canvasStream.getVideoTracks(),
+            ...dest.stream.getAudioTracks(),
+          ]);
+        } catch (audioErr) {
+          console.warn("Audio stream routing fallback:", audioErr);
+        }
+      }
+
+      const recorder = new MediaRecorder(streamToRecord, { mimeType });
       mediaRecorderRef.current = recorder;
 
       recorder.ondataavailable = (event) => {
@@ -511,11 +601,12 @@ export default function DemoPage() {
       };
 
       recorder.onstop = () => {
+        stopCanvasLoop();
         const blob = new Blob(recordedChunksRef.current, { type: mimeType });
         const videoUrl = URL.createObjectURL(blob);
         const fileName = `cartify-reel-${currentScript.id}.webm`;
 
-        // Automatically download to user's local Downloads folder!
+        // Automatically trigger immediate download directly to user's computer Downloads folder!
         const downloadLink = document.createElement("a");
         downloadLink.href = videoUrl;
         downloadLink.download = fileName;
@@ -526,32 +617,23 @@ export default function DemoPage() {
         setLastDownloadedVideo(fileName);
         setIsRecording(false);
 
-        stream.getTracks().forEach((track) => track.stop());
+        canvasStream.getTracks().forEach((track) => track.stop());
         mediaStreamRef.current = null;
       };
-
-      // If user stops sharing using browser UI banner
-      const videoTrack = stream.getVideoTracks()[0];
-      if (videoTrack) {
-        videoTrack.onended = () => {
-          if (recorder.state !== "inactive") {
-            recorder.stop();
-          }
-        };
-      }
 
       recorder.start(200);
       setIsRecording(true);
 
-      // Start reel playback and stop recorder when reel ends
+      // Start reel playback; when reel finishes, recorder.stop() saves the complete video!
       await startReel(() => {
         if (recorder.state !== "inactive") {
           recorder.stop();
         }
       });
     } catch (err) {
-      console.warn("Screen record cancelled or failed:", err);
+      console.warn("Silent video capture failed:", err);
       setIsRecording(false);
+      stopCanvasLoop();
       if (mediaStreamRef.current) {
         mediaStreamRef.current.getTracks().forEach((track) => track.stop());
         mediaStreamRef.current = null;
@@ -799,7 +881,7 @@ export default function DemoPage() {
               </Button>
             </div>
 
-            {/* 1-Click Screen Record & Download Video Button */}
+            {/* 1-Click Silent Direct Video Export Button */}
             <div className="mb-4">
               {isRecording ? (
                 <Button
@@ -812,10 +894,15 @@ export default function DemoPage() {
                 <Button
                   onClick={handleRecordAndDownload}
                   disabled={isGeneratingVoice || step === "typing" || step === "converting"}
-                  className="w-full gap-2 bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 font-semibold text-white shadow-sm"
+                  className="w-full flex-col py-2.5 h-auto gap-0.5 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-500 hover:to-teal-500 font-bold text-white shadow-md border border-emerald-400/30"
                 >
-                  <Video className="h-4 w-4 text-rose-100" />
-                  Record &amp; Download Video (.webm)
+                  <div className="flex items-center gap-2 text-sm">
+                    <Video className="h-4 w-4 text-emerald-200" />
+                    <span>🎬 Start Reel &amp; Save Video (.webm)</span>
+                  </div>
+                  <span className="text-[10px] font-normal text-emerald-100/90">
+                    Captures the left-hand video directly — No screen popups!
+                  </span>
                 </Button>
               )}
             </div>
@@ -1100,15 +1187,18 @@ export default function DemoPage() {
 
             <div className="space-y-2.5 text-xs text-slate-300">
               <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 space-y-1">
-                <span className="font-bold text-rose-400 flex items-center gap-1.5">
-                  1. Complete Video (.webm)
+                <span className="font-bold text-emerald-400 flex items-center gap-1.5">
+                  1. Left-Side Video Export (.webm)
                 </span>
                 <p className="text-slate-400 text-[11px] leading-relaxed">
-                  Clicking <strong>Record &amp; Download Video</strong> captures the reel visual with synchronized Achernar voiceover and automatically downloads the video to your PC&apos;s:
+                  Clicking <strong>Start Reel &amp; Save Video</strong> directly captures the left-side phone video onto a 720x1280 9:16 canvas with synchronized Achernar voiceover. As soon as it finishes, the video automatically downloads directly to:
                 </p>
-                <div className="rounded bg-slate-900 px-2.5 py-1 font-mono text-[11px] text-rose-300 border border-slate-800 select-all">
+                <div className="rounded bg-slate-900 px-2.5 py-1 font-mono text-[11px] text-emerald-300 border border-slate-800 select-all">
                   Downloads / cartify-reel-[id].webm
                 </div>
+                <p className="text-[10px] text-slate-400 pt-0.5">
+                  ✨ 100% silent in-browser capture — zero screen-sharing or tab-selection dialogs.
+                </p>
               </div>
 
               <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 space-y-1">
@@ -1124,7 +1214,7 @@ export default function DemoPage() {
               </div>
 
               <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 space-y-1">
-                <span className="font-bold text-emerald-400 flex items-center gap-1.5">
+                <span className="font-bold text-cyan-400 flex items-center gap-1.5">
                   3. Voiceover Audio Only (.wav)
                 </span>
                 <p className="text-slate-400 text-[11px] leading-relaxed">
@@ -1135,6 +1225,9 @@ export default function DemoPage() {
           </div>
         </div>
       </div>
+
+      {/* Hidden 9:16 HD Canvas for silent direct video rendering & export */}
+      <canvas ref={canvasRef} width={720} height={1280} className="hidden" />
     </div>
   );
 }
