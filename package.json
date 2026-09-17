@@ -8,7 +8,7 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "git:sync": "git add -A && git commit -m \"feat: implement affiliate tracking engine\" && git push origin main"
+    "git:sync": "git add -A && git commit -m \"feat: add reel recording demo page and affiliate engine\" && git push origin main"
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.2.0",
