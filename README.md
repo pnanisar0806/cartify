@@ -25,4 +25,3 @@ The API key stays on the server. Restart the server after changing environment v
 3. **URL Recipe Extraction & SSRF Protection (`/lib/url-extractor.ts`)**: Automatically detects web links, blocks private/internal IPs, fetches the webpage, extracts ingredients via Schema.org `Recipe` JSON-LD (`recipeIngredient`) or fallback HTML parsing.
 4. **API Route (`POST /api/convert`)**: Configured with OpenAI Node SDK pointing to OpenRouter (`openrouter/free`), ingredient extraction, robust JSON parsing, and IP rate limiting (10 req/min).
 5. **Shopping Links**: Direct search links for Swiggy Instamart and Blinkit with `encodeURIComponent` targeting new tabs (`_blank`).
-

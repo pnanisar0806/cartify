@@ -4,3 +4,6 @@ node_modules/
 !.env.example
 *.tsbuildinfo
 work/
+marketing-vault/
+scripts/
+public/videos/
