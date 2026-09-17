@@ -20,7 +20,9 @@ import {
   Radio,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { getSwiggyUrl, getBlinkitUrl, getAmazonFreshUrl } from "@/lib/utils";
+import { getSwiggyUrl, getBlinkitUrl, getAmazonFreshUrl, getAmazonNowUrl } from "@/lib/utils";
+import { SwiggyLogo, BlinkitLogo, AmazonFreshLogo, AmazonNowLogo } from "@/components/store-logos";
+
 
 interface DemoScript {
   id: string;
@@ -59,7 +61,7 @@ const DEMO_SCRIPTS: DemoScript[] = [
     voiceover: {
       hook: "Stop spending 15 minutes searching for 10 different ingredients every time you see a recipe!",
       action: "Just paste your recipe into Cartify and hit convert.",
-      cta: "Boom! Instant 1-click shopping links for Swiggy, Blinkit, and Amazon Fresh. Link in bio!",
+      cta: "Boom! Instant 1-click carts on Swiggy, Blinkit, Amazon Fresh, and Amazon Now. Link in bio!",
     },
   },
   {
@@ -82,7 +84,7 @@ const DEMO_SCRIPTS: DemoScript[] = [
     voiceover: {
       hook: "Saw a 30-second recipe reel you want to cook tonight? Don't write it on paper.",
       action: "Paste the recipe into Cartify. It separates only the groceries you need.",
-      cta: "And gives you direct 1-click delivery carts on Amazon Fresh, Blinkit, and Swiggy!",
+      cta: "Get direct 1-click delivery carts on Amazon Fresh, Amazon Now, Blinkit, and Swiggy!",
     },
   },
   {
@@ -105,7 +107,7 @@ const DEMO_SCRIPTS: DemoScript[] = [
     voiceover: {
       hook: "Biryani grocery shopping used to be a nightmare of missing spices.",
       action: "Not anymore! Paste your biryani recipe into Cartify.",
-      cta: "Get all your fresh ingredients ready for 10-minute delivery on Amazon Fresh, Swiggy, and Blinkit!",
+      cta: "Get all your fresh ingredients ready for instant delivery on Swiggy, Blinkit, Amazon Fresh, and Amazon Now!",
     },
   },
   {
@@ -127,7 +129,7 @@ const DEMO_SCRIPTS: DemoScript[] = [
     voiceover: {
       hook: "Gym bros: stop wasting your post-workout window manually searching grocery apps.",
       action: "Paste your meal prep macro list straight into Cartify.",
-      cta: "Instant grocery delivery buttons for Amazon Fresh and Swiggy Instamart before your workout cools down!",
+      cta: "Instant grocery delivery buttons for Amazon Fresh, Amazon Now, and Swiggy Instamart before your workout cools down!",
     },
   },
   {
@@ -150,7 +152,7 @@ const DEMO_SCRIPTS: DemoScript[] = [
     voiceover: {
       hook: "Did you know you don't even have to type ingredients into Cartify anymore?",
       action: "Just paste ANY recipe website link. Cartify visits the site and extracts every ingredient automatically.",
-      cta: "Turn any recipe link on the internet into 1-click delivery carts right now at Cartify!",
+      cta: "Turn any recipe link on the internet into 1-click delivery carts right now on Swiggy, Blinkit, and Amazon!",
     },
   },
 ];
@@ -451,8 +453,9 @@ export default function DemoPage() {
                 {currentScript.isUrl ? "Recipe Link to Grocery Cart" : "Recipe to Grocery Cart"}
               </h2>
               <p className="text-[10px] text-slate-500">
-                1-click grocery search on Swiggy, Blinkit & Amazon Fresh
+                1-click search on Swiggy, Blinkit, Amazon Fresh & Amazon Now
               </p>
+
             </div>
 
             {/* Input Box */}
@@ -525,35 +528,45 @@ export default function DemoPage() {
                           {item}
                         </span>
                       </div>
-                      <div className="grid grid-cols-3 gap-1 pt-0.5">
+                      <div className="grid grid-cols-4 gap-1 pt-0.5">
                         <a
                           href={getSwiggyUrl(item)}
                           target="_blank"
                           rel="noreferrer"
-                          className="flex items-center justify-center gap-0.5 rounded border border-orange-200 bg-orange-50 px-1 py-1 text-[10px] font-semibold text-orange-900 hover:bg-orange-100"
+                          title="Swiggy Instamart"
+                          className="flex items-center justify-center rounded border border-orange-200/80 bg-white p-1 hover:bg-orange-50 shadow-2xs"
                         >
-                          Swiggy
-                          <ArrowUpRight className="h-2.5 w-2.5" />
+                          <SwiggyLogo className="h-3.5 w-auto" />
                         </a>
                         <a
                           href={getBlinkitUrl(item)}
                           target="_blank"
                           rel="noreferrer"
-                          className="flex items-center justify-center gap-0.5 rounded border border-yellow-200 bg-yellow-50 px-1 py-1 text-[10px] font-semibold text-green-900 hover:bg-yellow-100"
+                          title="Blinkit"
+                          className="flex items-center justify-center rounded border border-amber-200/80 bg-white p-1 hover:bg-amber-50 shadow-2xs"
                         >
-                          Blinkit
-                          <ArrowUpRight className="h-2.5 w-2.5" />
+                          <BlinkitLogo className="h-3.5 w-auto" />
                         </a>
                         <a
                           href={getAmazonFreshUrl(item)}
                           target="_blank"
                           rel="noreferrer"
-                          className="flex items-center justify-center gap-0.5 rounded border border-emerald-200 bg-emerald-50 px-1 py-1 text-[10px] font-semibold text-emerald-900 hover:bg-emerald-100"
+                          title="Amazon Fresh"
+                          className="flex items-center justify-center rounded border border-emerald-200/80 bg-white p-1 hover:bg-emerald-50 shadow-2xs"
                         >
-                          Amazon
-                          <ArrowUpRight className="h-2.5 w-2.5" />
+                          <AmazonFreshLogo className="h-3.5 w-auto" />
+                        </a>
+                        <a
+                          href={getAmazonNowUrl(item)}
+                          target="_blank"
+                          rel="noreferrer"
+                          title="Amazon Now"
+                          className="flex items-center justify-center rounded border border-slate-200 bg-white p-1 hover:bg-slate-50 shadow-2xs"
+                        >
+                          <AmazonNowLogo className="h-3.5 w-auto" />
                         </a>
                       </div>
+
                     </div>
                   ))}
                 </div>

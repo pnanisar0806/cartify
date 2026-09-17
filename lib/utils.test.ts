@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getSwiggyUrl, getBlinkitUrl, getAmazonFreshUrl } from "./utils";
+import { getSwiggyUrl, getBlinkitUrl, getAmazonFreshUrl, getAmazonNowUrl } from "./utils";
 
 describe("Shopping link URL generators", () => {
   it("formats Swiggy Instamart URL with encoded query parameter", () => {
@@ -29,6 +29,26 @@ describe("Shopping link URL generators", () => {
     expect(url).toBe("https://www.amazon.in/s?k=paneer%20%26%20butter&i=nowstore&tag=cartify-21");
     delete process.env.NEXT_PUBLIC_AMAZON_TAG;
   });
+
+  it("formats Amazon Now URL with searchKeyword parameter", () => {
+    delete process.env.NEXT_PUBLIC_AMAZON_TAG;
+    expect(getAmazonNowUrl("coffee")).toBe(
+      "https://www.amazon.in/tez/browse/search?searchKeyword=coffee"
+    );
+    expect(getAmazonNowUrl("cold brew & milk")).toBe(
+      "https://www.amazon.in/tez/browse/search?searchKeyword=cold%20brew%20%26%20milk"
+    );
+  });
+
+  it("appends Amazon Associates affiliate tag to Amazon Now when configured", () => {
+    process.env.NEXT_PUBLIC_AMAZON_TAG = "cartify-21";
+    const url = getAmazonNowUrl("coffee");
+    expect(url).toBe(
+      "https://www.amazon.in/tez/browse/search?searchKeyword=coffee&tag=cartify-21"
+    );
+    delete process.env.NEXT_PUBLIC_AMAZON_TAG;
+  });
+
 
   it("applies Cuelinks affiliate wrapping when configured", () => {
     process.env.NEXT_PUBLIC_CUELINKS_ID = "12345";
