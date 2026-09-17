@@ -61,7 +61,7 @@ const DEMO_SCRIPTS: DemoScript[] = [
     voiceover: {
       hook: "Stop spending 15 minutes searching for 10 different ingredients every time you see a recipe!",
       action: "Just paste your recipe into Cartify and hit convert.",
-      cta: "Boom! Instant 1-click carts on Swiggy, Blinkit, Amazon Fresh, and Amazon Now. Link in bio!",
+      cta: "Boom! Instant 1-click carts on Swiggy, Blinkit, Amazon Fresh, and Amazon Now. Link in the description!",
     },
   },
   {
@@ -84,7 +84,7 @@ const DEMO_SCRIPTS: DemoScript[] = [
     voiceover: {
       hook: "Saw a 30-second recipe reel you want to cook tonight? Don't write it on paper.",
       action: "Paste the recipe into Cartify. It separates only the groceries you need.",
-      cta: "Get direct 1-click delivery carts on Amazon Fresh, Amazon Now, Blinkit, and Swiggy!",
+      cta: "Get direct 1-click delivery carts on Amazon Fresh, Amazon Now, Blinkit, and Swiggy. Link in the description!",
     },
   },
   {
@@ -107,7 +107,7 @@ const DEMO_SCRIPTS: DemoScript[] = [
     voiceover: {
       hook: "Biryani grocery shopping used to be a nightmare of missing spices.",
       action: "Not anymore! Paste your biryani recipe into Cartify.",
-      cta: "Get all your fresh ingredients ready for instant delivery on Swiggy, Blinkit, Amazon Fresh, and Amazon Now!",
+      cta: "Get all your fresh ingredients ready for instant delivery on Swiggy, Blinkit, Amazon Fresh, and Amazon Now. Link in the description!",
     },
   },
   {
@@ -129,7 +129,7 @@ const DEMO_SCRIPTS: DemoScript[] = [
     voiceover: {
       hook: "Gym bros: stop wasting your post-workout window manually searching grocery apps.",
       action: "Paste your meal prep macro list straight into Cartify.",
-      cta: "Instant grocery delivery buttons for Amazon Fresh, Amazon Now, and Swiggy Instamart before your workout cools down!",
+      cta: "Instant grocery delivery buttons for Amazon Fresh, Amazon Now, and Swiggy Instamart before your workout cools down. Link in the description!",
     },
   },
   {
@@ -152,7 +152,7 @@ const DEMO_SCRIPTS: DemoScript[] = [
     voiceover: {
       hook: "Did you know you don't even have to type ingredients into Cartify anymore?",
       action: "Just paste ANY recipe website link. Cartify visits the site and extracts every ingredient automatically.",
-      cta: "Turn any recipe link on the internet into 1-click delivery carts right now on Swiggy, Blinkit, and Amazon!",
+      cta: "Turn any recipe link on the internet into 1-click delivery carts right now on Swiggy, Blinkit, and Amazon. Link in the description!",
     },
   },
 ];
@@ -168,7 +168,7 @@ export default function DemoPage() {
   const [voiceMode, setVoiceMode] = useState<"achernar" | "browser">("achernar");
   const [geminiApiKey, setGeminiApiKey] = useState("");
   const [isGeneratingVoice, setIsGeneratingVoice] = useState(false);
-  const [achernarAudioUrl, setAchernarAudioUrl] = useState<string | null>(null);
+  const [audioCache, setAudioCache] = useState<Record<string, string>>({});
   const [audioError, setAudioError] = useState<string | null>(null);
 
   // Browser voice fallback state
@@ -197,8 +197,9 @@ export default function DemoPage() {
       localStorage.setItem("cartify_gemini_key", key);
     }
     // Invalidate previously cached audio when key changes
-    setAchernarAudioUrl(null);
+    setAudioCache({});
   }
+
 
   // Load browser voices for fallback
   useEffect(() => {
@@ -244,6 +245,10 @@ export default function DemoPage() {
 
   // Fetch Achernar Audio from /api/tts
   async function fetchAchernarAudio(script: DemoScript): Promise<string | null> {
+    if (audioCache[script.id]) {
+      return audioCache[script.id];
+    }
+
     setAudioError(null);
     setIsGeneratingVoice(true);
 
@@ -268,7 +273,7 @@ export default function DemoPage() {
 
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
-      setAchernarAudioUrl(url);
+      setAudioCache((prev) => ({ ...prev, [script.id]: url }));
       return url;
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Error generating voiceover.";
@@ -276,6 +281,26 @@ export default function DemoPage() {
       return null;
     } finally {
       setIsGeneratingVoice(false);
+    }
+  }
+
+  // Preview or test voiceover
+  async function handleTestAudio() {
+    clearAllTimers();
+    let url: string | null = audioCache[currentScript.id] || null;
+    if (!url) {
+      url = await fetchAchernarAudio(currentScript);
+    }
+
+    if (url) {
+      if (activeAudioRef.current) {
+        activeAudioRef.current.pause();
+      }
+      const audio = new Audio(url);
+      activeAudioRef.current = audio;
+      audio.play().catch((err) => {
+        console.warn("Preview play failed:", err);
+      });
     }
   }
 
@@ -304,69 +329,84 @@ export default function DemoPage() {
   async function startReel() {
     clearAllTimers();
     setDisplayText("");
-    setStep("hook");
-    setCurrentCaption(currentScript.voiceover.hook);
 
     if (voiceMode === "achernar") {
-      let audioUrl = achernarAudioUrl;
+      let audioUrl: string | null = audioCache[currentScript.id] || null;
       if (!audioUrl) {
         audioUrl = await fetchAchernarAudio(currentScript);
       }
 
+
       if (!audioUrl) {
-        // If Achernar failed or no key, guide the user and stop
+        setStep("idle");
         return;
+      }
+
+      if (activeAudioRef.current) {
+        activeAudioRef.current.pause();
+        activeAudioRef.current.currentTime = 0;
       }
 
       const audio = new Audio(audioUrl);
       activeAudioRef.current = audio;
 
-      audio.onloadedmetadata = () => {
-        const totalDuration = audio.duration || 14;
+      audio.onerror = (e) => {
+        console.error("Audio playback error:", e);
+        setAudioError("Unable to play audio. Click Start Reel to retry.");
+        setStep("idle");
+      };
+
+      audio.ontimeupdate = () => {
+        const t = audio.currentTime;
+        const totalDuration = (audio.duration && !isNaN(audio.duration) && audio.duration > 0) ? audio.duration : 14;
         const hookEnd = totalDuration * 0.32;
         const typingEnd = totalDuration * 0.72;
         const convertEnd = totalDuration * 0.84;
 
-        audio.ontimeupdate = () => {
-          const t = audio.currentTime;
+        if (t < hookEnd) {
+          setStep("hook");
+          setCurrentCaption(currentScript.voiceover.hook);
+        } else if (t >= hookEnd && t < typingEnd) {
+          setStep("typing");
+          setCurrentCaption(currentScript.voiceover.action);
 
-          if (t < hookEnd) {
-            setStep("hook");
-            setCurrentCaption(currentScript.voiceover.hook);
-          } else if (t >= hookEnd && t < typingEnd) {
-            setStep("typing");
-            setCurrentCaption(currentScript.voiceover.action);
-
-            // Synchronize typed text to action phase
-            const typingProgress = (t - hookEnd) / (typingEnd - hookEnd);
-            const textToType = currentScript.input;
-            const sliceIndex = Math.min(
-              textToType.length,
-              Math.floor(typingProgress * textToType.length)
-            );
-            setDisplayText(textToType.slice(0, sliceIndex));
-          } else if (t >= typingEnd && t < convertEnd) {
-            setStep("converting");
-            setDisplayText(currentScript.input);
-            setCurrentCaption("Extracting grocery items & finding direct store carts...");
-          } else if (t >= convertEnd) {
-            setStep("results");
-            setCurrentCaption(currentScript.voiceover.cta);
-          }
-        };
-
-        audio.onended = () => {
+          // Synchronize typed text to action phase
+          const typingProgress = (t - hookEnd) / (typingEnd - hookEnd);
+          const textToType = currentScript.input;
+          const sliceIndex = Math.min(
+            textToType.length,
+            Math.floor(typingProgress * textToType.length)
+          );
+          setDisplayText(textToType.slice(0, sliceIndex));
+        } else if (t >= typingEnd && t < convertEnd) {
+          setStep("converting");
+          setDisplayText(currentScript.input);
+          setCurrentCaption("Extracting grocery items & finding direct store carts...");
+        } else if (t >= convertEnd) {
           setStep("results");
-        };
-
-        audio.play();
+          setCurrentCaption(currentScript.voiceover.cta);
+        }
       };
 
-      // In case metadata doesn't fire immediately, play directly
-      audio.play().catch(() => {});
+      audio.onended = () => {
+        setStep("results");
+      };
+
+      try {
+        setStep("hook");
+        setCurrentCaption(currentScript.voiceover.hook);
+        await audio.play();
+      } catch (err) {
+        console.warn("Audio play issue:", err);
+        setAudioError("Audio generated! Click 'Start Reel' to start.");
+        setStep("idle");
+      }
     } else {
       // Browser Speech Synthesis fallback mode
+      setStep("hook");
+      setCurrentCaption(currentScript.voiceover.hook);
       speakBrowserText(currentScript.voiceover.hook, () => {
+
         setStep("typing");
         setCurrentCaption(currentScript.voiceover.action);
         speakBrowserText(currentScript.voiceover.action, () => {
@@ -598,9 +638,10 @@ export default function DemoPage() {
             <div className="flex flex-wrap gap-2.5 mb-4">
               <Button
                 onClick={startReel}
-                disabled={isGeneratingVoice || step === "hook" || step === "typing" || step === "converting"}
+                disabled={isGeneratingVoice || step === "typing" || step === "converting"}
                 className="flex-1 gap-2 bg-emerald-600 font-semibold hover:bg-emerald-500 text-white"
               >
+
                 {isGeneratingVoice ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -699,13 +740,17 @@ export default function DemoPage() {
                 <div className="flex flex-wrap gap-2 pt-1">
                   <button
                     type="button"
-                    onClick={() => fetchAchernarAudio(currentScript)}
+                    onClick={handleTestAudio}
                     disabled={isGeneratingVoice}
                     className="flex-1 rounded-lg border border-emerald-700/60 bg-emerald-900/30 px-3 py-1.5 text-xs font-medium text-emerald-200 hover:bg-emerald-900/60 transition-all flex items-center justify-center gap-1.5"
                   >
                     {isGeneratingVoice ? (
                       <>
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" /> Generating...
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" /> Generating Voice...
+                      </>
+                    ) : audioCache[currentScript.id] ? (
+                      <>
+                        <Volume2 className="h-3.5 w-3.5 text-emerald-400" /> Play Voice Preview
                       </>
                     ) : (
                       <>
@@ -714,9 +759,9 @@ export default function DemoPage() {
                     )}
                   </button>
 
-                  {achernarAudioUrl && (
+                  {audioCache[currentScript.id] && (
                     <a
-                      href={achernarAudioUrl}
+                      href={audioCache[currentScript.id]}
                       download={`cartify-reel-${currentScript.id}-achernar.wav`}
                       className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500 transition-all flex items-center gap-1.5"
                     >
@@ -725,6 +770,7 @@ export default function DemoPage() {
                   )}
                 </div>
               </div>
+
             ) : (
               /* Fallback Browser Speech Settings */
               <div className="rounded-xl border border-slate-800/80 bg-slate-950/60 p-3.5 space-y-3">
@@ -813,7 +859,6 @@ export default function DemoPage() {
                   type="button"
                   onClick={() => {
                     setSelectedScriptIndex(idx);
-                    setAchernarAudioUrl(null);
                     reset();
                   }}
                   className={`w-full text-left rounded-xl p-3 transition-all border ${
@@ -824,12 +869,15 @@ export default function DemoPage() {
                 >
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-slate-100">{script.title}</span>
-                    <span className="text-[10px] font-semibold text-emerald-400">{script.duration}</span>
+                    <span className="text-[10px] font-semibold text-emerald-400">
+                      {audioCache[script.id] ? "● Audio Ready" : script.duration}
+                    </span>
                   </div>
                   <p className="mt-1 text-[11px] text-slate-400 line-clamp-1">{script.voiceover.hook}</p>
                 </button>
               ))}
             </div>
+
 
             {/* Voiceover Script Card with 1-Click Copy */}
             <div className="mt-4 rounded-xl border border-slate-800 bg-slate-950/80 p-3.5">
