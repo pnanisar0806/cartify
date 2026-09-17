@@ -12,7 +12,7 @@
     "test": "vitest run",
     "git:status": "git status",
     "git:add": "git add -A",
-    "git:sync": "git add -A && git commit -m \"fix: resolve start reel button deactivation, add per-script audio caching and update CTA to description\" && git push origin main",
+    "git:sync": "git add -A && git commit -m \"feat: add in-browser screen recording with auto video download and storage location guide\" && git push origin main",
     "git:push": "git push origin main"
   },
   "dependencies": {

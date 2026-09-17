@@ -18,6 +18,10 @@ import {
   ExternalLink,
   Loader2,
   Radio,
+  Video,
+  FolderDown,
+  CheckCircle2,
+  Square,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getSwiggyUrl, getBlinkitUrl, getAmazonFreshUrl, getAmazonNowUrl } from "@/lib/utils";
@@ -171,6 +175,13 @@ export default function DemoPage() {
   const [audioCache, setAudioCache] = useState<Record<string, string>>({});
   const [audioError, setAudioError] = useState<string | null>(null);
 
+  // Screen recording & auto-download state
+  const [isRecording, setIsRecording] = useState(false);
+  const [lastDownloadedVideo, setLastDownloadedVideo] = useState<string | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordedChunksRef = useRef<Blob[]>([]);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+
   // Browser voice fallback state
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [speechRate, setSpeechRate] = useState(1.1);
@@ -230,7 +241,7 @@ export default function DemoPage() {
     };
   }, [selectedVoiceName]);
 
-  // Clean timers and stop audio
+  // Clean timers, streams, recorders and stop audio
   function clearAllTimers() {
     if (typingTimerRef.current) clearInterval(typingTimerRef.current);
     if (stepTimerRef.current) clearTimeout(stepTimerRef.current);
@@ -241,6 +252,14 @@ export default function DemoPage() {
     if (typeof window !== "undefined" && "speechSynthesis" in window) {
       window.speechSynthesis.cancel();
     }
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      mediaRecorderRef.current.stop();
+    }
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+      mediaStreamRef.current = null;
+    }
+    setIsRecording(false);
   }
 
   // Fetch Achernar Audio from /api/tts
@@ -326,7 +345,7 @@ export default function DemoPage() {
   }
 
   // Start Reel with synchronized Google AI Studio Achernar voice
-  async function startReel() {
+  async function startReel(onComplete?: () => void) {
     clearAllTimers();
     setDisplayText("");
 
@@ -336,9 +355,9 @@ export default function DemoPage() {
         audioUrl = await fetchAchernarAudio(currentScript);
       }
 
-
       if (!audioUrl) {
         setStep("idle");
+        onComplete?.();
         return;
       }
 
@@ -354,6 +373,7 @@ export default function DemoPage() {
         console.error("Audio playback error:", e);
         setAudioError("Unable to play audio. Click Start Reel to retry.");
         setStep("idle");
+        onComplete?.();
       };
 
       audio.ontimeupdate = () => {
@@ -390,6 +410,9 @@ export default function DemoPage() {
 
       audio.onended = () => {
         setStep("results");
+        if (onComplete) {
+          setTimeout(onComplete, 1200);
+        }
       };
 
       try {
@@ -400,13 +423,13 @@ export default function DemoPage() {
         console.warn("Audio play issue:", err);
         setAudioError("Audio generated! Click 'Start Reel' to start.");
         setStep("idle");
+        onComplete?.();
       }
     } else {
       // Browser Speech Synthesis fallback mode
       setStep("hook");
       setCurrentCaption(currentScript.voiceover.hook);
       speakBrowserText(currentScript.voiceover.hook, () => {
-
         setStep("typing");
         setCurrentCaption(currentScript.voiceover.action);
         speakBrowserText(currentScript.voiceover.action, () => {
@@ -416,7 +439,11 @@ export default function DemoPage() {
           stepTimerRef.current = setTimeout(() => {
             setStep("results");
             setCurrentCaption(currentScript.voiceover.cta);
-            speakBrowserText(currentScript.voiceover.cta);
+            speakBrowserText(currentScript.voiceover.cta, () => {
+              if (onComplete) {
+                setTimeout(onComplete, 1200);
+              }
+            });
           }, 1200);
         });
 
@@ -434,6 +461,109 @@ export default function DemoPage() {
         }, 35);
       });
     }
+  }
+
+  // Handle in-browser screen recording and automatic video download
+  async function handleRecordAndDownload() {
+    if (typeof window === "undefined" || !navigator.mediaDevices?.getDisplayMedia) {
+      alert("Screen recording is not supported in this browser. On Windows, you can also press Win + Alt + R to record!");
+      return;
+    }
+
+    try {
+      // Preload Achernar audio if needed before starting recording dialog
+      if (voiceMode === "achernar" && !audioCache[currentScript.id]) {
+        const audioUrl = await fetchAchernarAudio(currentScript);
+        if (!audioUrl) return;
+      }
+
+      // Prompt user to select screen / tab to record
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: {
+          displaySurface: "browser",
+        } as MediaTrackConstraints,
+        audio: true,
+      });
+
+      mediaStreamRef.current = stream;
+      recordedChunksRef.current = [];
+
+      let mimeType = "video/webm";
+      if (typeof MediaRecorder !== "undefined") {
+        if (MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")) {
+          mimeType = "video/webm;codecs=vp9,opus";
+        } else if (MediaRecorder.isTypeSupported("video/webm;codecs=vp8,opus")) {
+          mimeType = "video/webm;codecs=vp8,opus";
+        } else if (MediaRecorder.isTypeSupported("video/webm")) {
+          mimeType = "video/webm";
+        } else if (MediaRecorder.isTypeSupported("video/mp4")) {
+          mimeType = "video/mp4";
+        }
+      }
+
+      const recorder = new MediaRecorder(stream, { mimeType });
+      mediaRecorderRef.current = recorder;
+
+      recorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+          recordedChunksRef.current.push(event.data);
+        }
+      };
+
+      recorder.onstop = () => {
+        const blob = new Blob(recordedChunksRef.current, { type: mimeType });
+        const videoUrl = URL.createObjectURL(blob);
+        const fileName = `cartify-reel-${currentScript.id}.webm`;
+
+        // Automatically download to user's local Downloads folder!
+        const downloadLink = document.createElement("a");
+        downloadLink.href = videoUrl;
+        downloadLink.download = fileName;
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        document.body.removeChild(downloadLink);
+
+        setLastDownloadedVideo(fileName);
+        setIsRecording(false);
+
+        stream.getTracks().forEach((track) => track.stop());
+        mediaStreamRef.current = null;
+      };
+
+      // If user stops sharing using browser UI banner
+      const videoTrack = stream.getVideoTracks()[0];
+      if (videoTrack) {
+        videoTrack.onended = () => {
+          if (recorder.state !== "inactive") {
+            recorder.stop();
+          }
+        };
+      }
+
+      recorder.start(200);
+      setIsRecording(true);
+
+      // Start reel playback and stop recorder when reel ends
+      await startReel(() => {
+        if (recorder.state !== "inactive") {
+          recorder.stop();
+        }
+      });
+    } catch (err) {
+      console.warn("Screen record cancelled or failed:", err);
+      setIsRecording(false);
+      if (mediaStreamRef.current) {
+        mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+        mediaStreamRef.current = null;
+      }
+    }
+  }
+
+  function stopRecording() {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      mediaRecorderRef.current.stop();
+    }
+    clearAllTimers();
   }
 
   function reset() {
@@ -468,6 +598,17 @@ export default function DemoPage() {
       <div className="flex w-full max-w-5xl flex-col items-center gap-8 lg:flex-row lg:items-start lg:justify-center">
         {/* Phone Mockup Frame (9:16 aspect ratio: 370px x 780px) */}
         <div className="relative flex h-[780px] w-[370px] shrink-0 flex-col overflow-hidden rounded-[44px] border-[5px] border-slate-700/80 bg-[#f6f9f7] shadow-[0_25px_60px_rgba(0,0,0,0.6)] text-slate-900">
+          {/* Recording Badge Overlay */}
+          {isRecording && (
+            <div className="absolute top-12 left-4 right-4 z-40 flex items-center justify-between rounded-full bg-rose-600 px-3 py-1 text-[10px] font-bold text-white shadow-lg animate-pulse">
+              <span className="flex items-center gap-1.5">
+                <span className="h-2 w-2 rounded-full bg-white animate-ping" />
+                🔴 RECORDING REEL
+              </span>
+              <span>{currentScript.duration}</span>
+            </div>
+          )}
+
           {/* Dynamic Island / Notch */}
           <div className="flex h-11 items-center justify-between px-6 pt-2">
             <span className="text-[11px] font-bold text-slate-500">9:41</span>
@@ -635,13 +776,12 @@ export default function DemoPage() {
               <span className="text-xs text-emerald-400 font-medium">9:16 Ready</span>
             </h2>
 
-            <div className="flex flex-wrap gap-2.5 mb-4">
+            <div className="flex flex-wrap gap-2.5 mb-2.5">
               <Button
-                onClick={startReel}
-                disabled={isGeneratingVoice || step === "typing" || step === "converting"}
+                onClick={() => startReel()}
+                disabled={isGeneratingVoice || isRecording || step === "typing" || step === "converting"}
                 className="flex-1 gap-2 bg-emerald-600 font-semibold hover:bg-emerald-500 text-white"
               >
-
                 {isGeneratingVoice ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -650,7 +790,7 @@ export default function DemoPage() {
                 ) : (
                   <>
                     <Play className="h-4 w-4 fill-current" />
-                    Start Reel ({currentScript.duration})
+                    Preview Reel ({currentScript.duration})
                   </>
                 )}
               </Button>
@@ -658,6 +798,45 @@ export default function DemoPage() {
                 <RotateCcw className="h-4 w-4" /> Reset
               </Button>
             </div>
+
+            {/* 1-Click Screen Record & Download Video Button */}
+            <div className="mb-4">
+              {isRecording ? (
+                <Button
+                  onClick={stopRecording}
+                  className="w-full gap-2 bg-rose-600 hover:bg-rose-500 font-bold text-white shadow-md shadow-rose-950/40 animate-pulse"
+                >
+                  <Square className="h-4 w-4 fill-current" /> Stop &amp; Save Video Now
+                </Button>
+              ) : (
+                <Button
+                  onClick={handleRecordAndDownload}
+                  disabled={isGeneratingVoice || step === "typing" || step === "converting"}
+                  className="w-full gap-2 bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 font-semibold text-white shadow-sm"
+                >
+                  <Video className="h-4 w-4 text-rose-100" />
+                  Record &amp; Download Video (.webm)
+                </Button>
+              )}
+            </div>
+
+            {/* Video Downloaded Confirmation Banner */}
+            {lastDownloadedVideo && (
+              <div className="mb-4 rounded-xl border border-emerald-500/40 bg-emerald-950/40 p-3 text-xs text-emerald-200 flex items-start gap-2.5">
+                <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0 mt-0.5" />
+                <div className="space-y-0.5">
+                  <p className="font-bold text-emerald-300">
+                    Video Saved to your Downloads folder!
+                  </p>
+                  <p className="font-mono text-[11px] text-emerald-400/90 break-all">
+                    {lastDownloadedVideo}
+                  </p>
+                  <p className="text-[10px] text-slate-400">
+                    Saved directly to your PC&apos;s Downloads folder. Ready for Instagram Reels, YouTube Shorts, or TikTok!
+                  </p>
+                </div>
+              </div>
+            )}
 
             {/* Voice Provider Switcher */}
             <div className="mb-4 flex rounded-lg border border-slate-800 bg-slate-950 p-1">
@@ -908,6 +1087,49 @@ export default function DemoPage() {
                 >
                   Open AI Studio Voice Library <ExternalLink className="h-2.5 w-2.5" />
                 </a>
+              </div>
+            </div>
+          </div>
+
+          {/* Where is the complete video stored? Explainer Card */}
+          <div className="rounded-2xl border border-slate-800 bg-slate-900/90 p-5 shadow-lg space-y-3">
+            <div className="flex items-center gap-2 text-white font-bold text-sm">
+              <FolderDown className="h-4 w-4 text-emerald-400" />
+              <span>Where are generated files stored?</span>
+            </div>
+
+            <div className="space-y-2.5 text-xs text-slate-300">
+              <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 space-y-1">
+                <span className="font-bold text-rose-400 flex items-center gap-1.5">
+                  1. Complete Video (.webm)
+                </span>
+                <p className="text-slate-400 text-[11px] leading-relaxed">
+                  Clicking <strong>Record &amp; Download Video</strong> captures the reel visual with synchronized Achernar voiceover and automatically downloads the video to your PC&apos;s:
+                </p>
+                <div className="rounded bg-slate-900 px-2.5 py-1 font-mono text-[11px] text-rose-300 border border-slate-800 select-all">
+                  Downloads / cartify-reel-[id].webm
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 space-y-1">
+                <span className="font-bold text-yellow-400 flex items-center gap-1.5">
+                  2. Windows Xbox Game Bar (Native MP4)
+                </span>
+                <p className="text-slate-400 text-[11px] leading-relaxed">
+                  Press <kbd className="rounded bg-slate-800 px-1.5 py-0.5 text-slate-200 border border-slate-700 font-mono text-[10px]">Win + Alt + R</kbd> on your keyboard, then click <strong>Preview Reel</strong>. Windows records and automatically saves an MP4 to:
+                </p>
+                <div className="rounded bg-slate-900 px-2.5 py-1 font-mono text-[11px] text-yellow-300 border border-slate-800 select-all">
+                  C:\Users\[Username]\Videos\Captures\
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 space-y-1">
+                <span className="font-bold text-emerald-400 flex items-center gap-1.5">
+                  3. Voiceover Audio Only (.wav)
+                </span>
+                <p className="text-slate-400 text-[11px] leading-relaxed">
+                  Clicking <strong>Download .WAV</strong> downloads the pristine 24kHz Google AI Achernar voiceover file directly into your <strong>Downloads</strong> folder to import into CapCut or Premiere.
+                </p>
               </div>
             </div>
           </div>
