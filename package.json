@@ -11,6 +11,7 @@
     "git:init": "git init && git add -A && git commit -m \"feat: complete Cartify recipe-to-cart app with URL extraction\"",
     "git:status": "git status",
     "git:commit": "git add package.json && git commit -m \"chore: add gh scripts to package.json\"",
+    "git:main": "git branch -M main",
     "gh:status": "gh auth status",
     "gh:create": "gh repo create cartify --public --source=. --remote=origin --push"
   },
