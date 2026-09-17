@@ -13,7 +13,11 @@ import {
   Copy,
   Film,
   Globe,
-  SlidersHorizontal,
+  Download,
+  Key,
+  ExternalLink,
+  Loader2,
+  Radio,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getSwiggyUrl, getBlinkitUrl, getAmazonFreshUrl } from "@/lib/utils";
@@ -158,17 +162,43 @@ export default function DemoPage() {
   const [currentCaption, setCurrentCaption] = useState("");
   const [copiedScript, setCopiedScript] = useState(false);
 
-  // AI Voice settings
+  // Google AI Studio Achernar voice state
+  const [voiceMode, setVoiceMode] = useState<"achernar" | "browser">("achernar");
+  const [geminiApiKey, setGeminiApiKey] = useState("");
+  const [isGeneratingVoice, setIsGeneratingVoice] = useState(false);
+  const [achernarAudioUrl, setAchernarAudioUrl] = useState<string | null>(null);
+  const [audioError, setAudioError] = useState<string | null>(null);
+
+  // Browser voice fallback state
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [speechRate, setSpeechRate] = useState(1.1);
   const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [selectedVoiceName, setSelectedVoiceName] = useState("");
 
   const currentScript = DEMO_SCRIPTS[selectedScriptIndex];
+  const activeAudioRef = useRef<HTMLAudioElement | null>(null);
   const typingTimerRef = useRef<NodeJS.Timeout | null>(null);
   const stepTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Load browser voices
+  // Load saved Gemini API key from localStorage
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const savedKey = localStorage.getItem("cartify_gemini_key") || "";
+      if (savedKey) setGeminiApiKey(savedKey);
+    }
+  }, []);
+
+  // Save API key when changed
+  function handleApiKeyChange(key: string) {
+    setGeminiApiKey(key);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("cartify_gemini_key", key);
+    }
+    // Invalidate previously cached audio when key changes
+    setAchernarAudioUrl(null);
+  }
+
+  // Load browser voices for fallback
   useEffect(() => {
     if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
 
@@ -176,7 +206,6 @@ export default function DemoPage() {
       const voices = window.speechSynthesis.getVoices();
       if (voices.length > 0) {
         setAvailableVoices(voices);
-        // Find best natural English voice (Google US/UK, Microsoft Natural, or any English voice)
         const preferred =
           voices.find((v) => v.name.includes("Natural") && v.lang.startsWith("en")) ||
           voices.find((v) => v.name.includes("Google") && v.lang.startsWith("en")) ||
@@ -198,26 +227,66 @@ export default function DemoPage() {
     };
   }, [selectedVoiceName]);
 
-  // Clean timers
+  // Clean timers and stop audio
   function clearAllTimers() {
     if (typingTimerRef.current) clearInterval(typingTimerRef.current);
     if (stepTimerRef.current) clearTimeout(stepTimerRef.current);
+    if (activeAudioRef.current) {
+      activeAudioRef.current.pause();
+      activeAudioRef.current.currentTime = 0;
+    }
     if (typeof window !== "undefined" && "speechSynthesis" in window) {
       window.speechSynthesis.cancel();
     }
   }
 
-  function speakText(text: string, onEnd?: () => void) {
+  // Fetch Achernar Audio from /api/tts
+  async function fetchAchernarAudio(script: DemoScript): Promise<string | null> {
+    setAudioError(null);
+    setIsGeneratingVoice(true);
+
+    try {
+      const fullText = `${script.voiceover.hook} ${script.voiceover.action} ${script.voiceover.cta}`;
+      const response = await fetch("/api/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: fullText,
+          voiceName: "Achernar",
+          apiKey: geminiApiKey,
+        }),
+      });
+
+      if (!response.ok) {
+        const errJson = await response.json().catch(() => ({}));
+        throw new Error(
+          errJson.error || "Failed to generate Achernar voice. Please verify your Google AI Studio API key."
+        );
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      setAchernarAudioUrl(url);
+      return url;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Error generating voiceover.";
+      setAudioError(msg);
+      return null;
+    } finally {
+      setIsGeneratingVoice(false);
+    }
+  }
+
+  // Speak via browser fallback
+  function speakBrowserText(text: string, onEnd?: () => void) {
     if (!voiceEnabled || typeof window === "undefined" || !("speechSynthesis" in window)) {
-      if (onEnd) setTimeout(onEnd, 2200);
+      if (onEnd) setTimeout(onEnd, 2000);
       return;
     }
 
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.rate = speechRate;
-    utterance.pitch = 1.0;
-
     const voice = availableVoices.find((v) => v.name === selectedVoiceName);
     if (voice) utterance.voice = voice;
 
@@ -229,44 +298,100 @@ export default function DemoPage() {
     window.speechSynthesis.speak(utterance);
   }
 
-  function startReel() {
+  // Start Reel with synchronized Google AI Studio Achernar voice
+  async function startReel() {
     clearAllTimers();
     setDisplayText("");
     setStep("hook");
     setCurrentCaption(currentScript.voiceover.hook);
 
-    // Phase 1: Speak Hook
-    speakText(currentScript.voiceover.hook, () => {
-      // Phase 2: Start typing while speaking action
-      setStep("typing");
-      setCurrentCaption(currentScript.voiceover.action);
-      speakText(currentScript.voiceover.action, () => {
-        // Phase 3: Converting
-        setStep("converting");
-        setCurrentCaption("Extracting ingredients & generating instant carts...");
+    if (voiceMode === "achernar") {
+      let audioUrl = achernarAudioUrl;
+      if (!audioUrl) {
+        audioUrl = await fetchAchernarAudio(currentScript);
+      }
 
-        stepTimerRef.current = setTimeout(() => {
-          // Phase 4: Results & CTA
+      if (!audioUrl) {
+        // If Achernar failed or no key, guide the user and stop
+        return;
+      }
+
+      const audio = new Audio(audioUrl);
+      activeAudioRef.current = audio;
+
+      audio.onloadedmetadata = () => {
+        const totalDuration = audio.duration || 14;
+        const hookEnd = totalDuration * 0.32;
+        const typingEnd = totalDuration * 0.72;
+        const convertEnd = totalDuration * 0.84;
+
+        audio.ontimeupdate = () => {
+          const t = audio.currentTime;
+
+          if (t < hookEnd) {
+            setStep("hook");
+            setCurrentCaption(currentScript.voiceover.hook);
+          } else if (t >= hookEnd && t < typingEnd) {
+            setStep("typing");
+            setCurrentCaption(currentScript.voiceover.action);
+
+            // Synchronize typed text to action phase
+            const typingProgress = (t - hookEnd) / (typingEnd - hookEnd);
+            const textToType = currentScript.input;
+            const sliceIndex = Math.min(
+              textToType.length,
+              Math.floor(typingProgress * textToType.length)
+            );
+            setDisplayText(textToType.slice(0, sliceIndex));
+          } else if (t >= typingEnd && t < convertEnd) {
+            setStep("converting");
+            setDisplayText(currentScript.input);
+            setCurrentCaption("Extracting grocery items & finding direct store carts...");
+          } else if (t >= convertEnd) {
+            setStep("results");
+            setCurrentCaption(currentScript.voiceover.cta);
+          }
+        };
+
+        audio.onended = () => {
           setStep("results");
-          setCurrentCaption(currentScript.voiceover.cta);
-          speakText(currentScript.voiceover.cta);
-        }, 1200);
-      });
+        };
 
-      // Typing animation
-      const textToType = currentScript.input;
-      let i = 0;
-      const stepIncrement = currentScript.isUrl ? 2 : 4;
-      typingTimerRef.current = setInterval(() => {
-        i += stepIncrement;
-        if (i <= textToType.length) {
-          setDisplayText(textToType.slice(0, i));
-        } else {
-          setDisplayText(textToType);
-          if (typingTimerRef.current) clearInterval(typingTimerRef.current);
-        }
-      }, 35);
-    });
+        audio.play();
+      };
+
+      // In case metadata doesn't fire immediately, play directly
+      audio.play().catch(() => {});
+    } else {
+      // Browser Speech Synthesis fallback mode
+      speakBrowserText(currentScript.voiceover.hook, () => {
+        setStep("typing");
+        setCurrentCaption(currentScript.voiceover.action);
+        speakBrowserText(currentScript.voiceover.action, () => {
+          setStep("converting");
+          setCurrentCaption("Extracting ingredients & generating instant carts...");
+
+          stepTimerRef.current = setTimeout(() => {
+            setStep("results");
+            setCurrentCaption(currentScript.voiceover.cta);
+            speakBrowserText(currentScript.voiceover.cta);
+          }, 1200);
+        });
+
+        const textToType = currentScript.input;
+        let i = 0;
+        const stepIncrement = currentScript.isUrl ? 2 : 4;
+        typingTimerRef.current = setInterval(() => {
+          i += stepIncrement;
+          if (i <= textToType.length) {
+            setDisplayText(textToType.slice(0, i));
+          } else {
+            setDisplayText(textToType);
+            if (typingTimerRef.current) clearInterval(typingTimerRef.current);
+          }
+        }, 35);
+      });
+    }
   }
 
   function reset() {
@@ -288,18 +413,18 @@ export default function DemoPage() {
       {/* Studio Banner */}
       <div className="mb-6 flex max-w-4xl flex-col items-center text-center">
         <div className="inline-flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-400">
-          <Film className="h-3.5 w-3.5" /> Cartify 9:16 Viral Reel Creator & AI Studio
+          <Film className="h-3.5 w-3.5" /> Cartify 9:16 Viral Reel Studio with Google AI Studio Voice
         </div>
         <h1 className="mt-2 text-2xl font-bold tracking-tight sm:text-3xl text-white">
-          5 Viral Video Templates with AI Voiceover
+          Achernar AI Voiceover & 9:16 Video Studio
         </h1>
         <p className="mt-1 max-w-xl text-xs sm:text-sm text-slate-400">
-          Record your screen in 9:16 portrait. Real live typing, ingredient extraction, and synchronized AI voiceovers for Instagram Reels, YouTube Shorts, and TikTok!
+          Featuring Google AI Studio&apos;s natural <strong>Achernar</strong> voiceover. Exact lip-sync typing, live ingredient extraction, and 1-click Swiggy, Blinkit, and Amazon Fresh shopping carts!
         </p>
       </div>
 
       <div className="flex w-full max-w-5xl flex-col items-center gap-8 lg:flex-row lg:items-start lg:justify-center">
-        {/* Phone Mockup Frame (9:16 aspect ratio: 390px x 780px) */}
+        {/* Phone Mockup Frame (9:16 aspect ratio: 370px x 780px) */}
         <div className="relative flex h-[780px] w-[370px] shrink-0 flex-col overflow-hidden rounded-[44px] border-[5px] border-slate-700/80 bg-[#f6f9f7] shadow-[0_25px_60px_rgba(0,0,0,0.6)] text-slate-900">
           {/* Dynamic Island / Notch */}
           <div className="flex h-11 items-center justify-between px-6 pt-2">
@@ -460,85 +585,203 @@ export default function DemoPage() {
             <div className="flex flex-wrap gap-2.5 mb-4">
               <Button
                 onClick={startReel}
-                disabled={step === "hook" || step === "typing" || step === "converting"}
+                disabled={isGeneratingVoice || step === "hook" || step === "typing" || step === "converting"}
                 className="flex-1 gap-2 bg-emerald-600 font-semibold hover:bg-emerald-500 text-white"
               >
-                <Play className="h-4 w-4 fill-current" />
-                Start Reel ({currentScript.duration})
+                {isGeneratingVoice ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Generating Achernar Voice...
+                  </>
+                ) : (
+                  <>
+                    <Play className="h-4 w-4 fill-current" />
+                    Start Reel ({currentScript.duration})
+                  </>
+                )}
               </Button>
               <Button onClick={reset} variant="outline" className="gap-1.5 border-slate-700 bg-slate-800 text-slate-200 hover:bg-slate-700">
                 <RotateCcw className="h-4 w-4" /> Reset
               </Button>
             </div>
 
-            {/* AI Voiceover Settings */}
-            <div className="rounded-xl border border-slate-800/80 bg-slate-950/60 p-3.5 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-                  {voiceEnabled ? <Volume2 className="h-3.5 w-3.5 text-emerald-400" /> : <VolumeX className="h-3.5 w-3.5 text-slate-500" />}
-                  AI Voiceover Narration
-                </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (voiceEnabled) window.speechSynthesis?.cancel();
-                    setVoiceEnabled(!voiceEnabled);
-                  }}
-                  className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                    voiceEnabled ? "bg-emerald-600" : "bg-slate-700"
-                  }`}
-                >
-                  <span
-                    className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                      voiceEnabled ? "translate-x-4" : "translate-x-0"
-                    }`}
-                  />
-                </button>
-              </div>
+            {/* Voice Provider Switcher */}
+            <div className="mb-4 flex rounded-lg border border-slate-800 bg-slate-950 p-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setVoiceMode("achernar");
+                  reset();
+                }}
+                className={`flex-1 rounded-md py-1.5 text-xs font-semibold transition-all ${
+                  voiceMode === "achernar"
+                    ? "bg-emerald-600 text-white shadow-xs"
+                    : "text-slate-400 hover:text-white"
+                }`}
+              >
+                ✨ Achernar (Google AI Studio)
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setVoiceMode("browser");
+                  reset();
+                }}
+                className={`flex-1 rounded-md py-1.5 text-xs font-semibold transition-all ${
+                  voiceMode === "browser"
+                    ? "bg-slate-700 text-white shadow-xs"
+                    : "text-slate-400 hover:text-white"
+                }`}
+              >
+                🔊 Browser TTS (Fallback)
+              </button>
+            </div>
 
-              {voiceEnabled && (
-                <div className="space-y-2 pt-1 border-t border-slate-800/60">
-                  <div>
-                    <label className="text-[10px] uppercase tracking-wider font-semibold text-slate-400">
-                      Browser AI Voice
+            {/* Achernar Voice Settings */}
+            {voiceMode === "achernar" ? (
+              <div className="rounded-xl border border-emerald-900/40 bg-emerald-950/20 p-3.5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-emerald-300 flex items-center gap-1.5">
+                    <Radio className="h-3.5 w-3.5 text-emerald-400" />
+                    Google AI Studio: Voice &ldquo;Achernar&rdquo;
+                  </span>
+                  <span className="rounded bg-emerald-900/60 px-2 py-0.5 text-[10px] font-bold text-emerald-300">
+                    Soft / Natural
+                  </span>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-medium text-slate-300 flex items-center gap-1">
+                      <Key className="h-3 w-3 text-emerald-400" /> Google AI Studio API Key (Free)
                     </label>
-                    <select
-                      value={selectedVoiceName}
-                      onChange={(e) => setSelectedVoiceName(e.target.value)}
-                      className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-2.5 py-1.5 text-xs text-slate-200 focus:border-emerald-500 focus:outline-none"
+                    <a
+                      href="https://aistudio.google.com/app/apikey"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-[10px] text-emerald-400 hover:underline inline-flex items-center gap-0.5"
                     >
-                      {availableVoices
-                        .filter((v) => v.lang.startsWith("en"))
-                        .map((v, i) => (
-                          <option key={i} value={v.name}>
-                            {v.name} ({v.lang})
-                          </option>
-                        ))}
-                    </select>
+                      Get Key <ExternalLink className="h-2.5 w-2.5" />
+                    </a>
                   </div>
+                  <input
+                    type="password"
+                    value={geminiApiKey}
+                    onChange={(e) => handleApiKeyChange(e.target.value)}
+                    placeholder="Paste AIzaSy... key or set GEMINI_API_KEY in .env.local"
+                    className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-2.5 py-1.5 text-xs text-slate-100 placeholder-slate-500 focus:border-emerald-500 focus:outline-none"
+                  />
+                  <p className="mt-1 text-[10px] text-slate-400">
+                    Keys are stored securely in your local browser only.
+                  </p>
+                </div>
 
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-slate-400 text-[11px]">Speech Speed: {speechRate}x</span>
-                    <div className="flex gap-1.5">
-                      {[1.0, 1.1, 1.2].map((rate) => (
-                        <button
-                          key={rate}
-                          type="button"
-                          onClick={() => setSpeechRate(rate)}
-                          className={`rounded px-2 py-0.5 text-[10px] font-semibold ${
-                            speechRate === rate
-                              ? "bg-emerald-600 text-white"
-                              : "bg-slate-800 text-slate-300 hover:bg-slate-700"
-                          }`}
-                        >
-                          {rate}x
-                        </button>
-                      ))}
+                {audioError && (
+                  <div className="rounded-lg bg-red-950/60 border border-red-800/60 p-2.5 text-[11px] text-red-300 leading-snug">
+                    {audioError}
+                  </div>
+                )}
+
+                {/* Audio Action Buttons */}
+                <div className="flex flex-wrap gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => fetchAchernarAudio(currentScript)}
+                    disabled={isGeneratingVoice}
+                    className="flex-1 rounded-lg border border-emerald-700/60 bg-emerald-900/30 px-3 py-1.5 text-xs font-medium text-emerald-200 hover:bg-emerald-900/60 transition-all flex items-center justify-center gap-1.5"
+                  >
+                    {isGeneratingVoice ? (
+                      <>
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" /> Generating...
+                      </>
+                    ) : (
+                      <>
+                        <Volume2 className="h-3.5 w-3.5 text-emerald-400" /> Generate / Test Audio
+                      </>
+                    )}
+                  </button>
+
+                  {achernarAudioUrl && (
+                    <a
+                      href={achernarAudioUrl}
+                      download={`cartify-reel-${currentScript.id}-achernar.wav`}
+                      className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500 transition-all flex items-center gap-1.5"
+                    >
+                      <Download className="h-3.5 w-3.5" /> Download .WAV
+                    </a>
+                  )}
+                </div>
+              </div>
+            ) : (
+              /* Fallback Browser Speech Settings */
+              <div className="rounded-xl border border-slate-800/80 bg-slate-950/60 p-3.5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                    {voiceEnabled ? <Volume2 className="h-3.5 w-3.5 text-emerald-400" /> : <VolumeX className="h-3.5 w-3.5 text-slate-500" />}
+                    Browser TTS Narration
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (voiceEnabled) window.speechSynthesis?.cancel();
+                      setVoiceEnabled(!voiceEnabled);
+                    }}
+                    className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                      voiceEnabled ? "bg-emerald-600" : "bg-slate-700"
+                    }`}
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                        voiceEnabled ? "translate-x-4" : "translate-x-0"
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                {voiceEnabled && (
+                  <div className="space-y-2 pt-1 border-t border-slate-800/60">
+                    <div>
+                      <label className="text-[10px] uppercase tracking-wider font-semibold text-slate-400">
+                        Browser Voice
+                      </label>
+                      <select
+                        value={selectedVoiceName}
+                        onChange={(e) => setSelectedVoiceName(e.target.value)}
+                        className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-2.5 py-1.5 text-xs text-slate-200 focus:border-emerald-500 focus:outline-none"
+                      >
+                        {availableVoices
+                          .filter((v) => v.lang.startsWith("en"))
+                          .map((v, i) => (
+                            <option key={i} value={v.name}>
+                              {v.name} ({v.lang})
+                            </option>
+                          ))}
+                      </select>
+                    </div>
+
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-slate-400 text-[11px]">Speech Speed: {speechRate}x</span>
+                      <div className="flex gap-1.5">
+                        {[1.0, 1.1, 1.2].map((rate) => (
+                          <button
+                            key={rate}
+                            type="button"
+                            onClick={() => setSpeechRate(rate)}
+                            className={`rounded px-2 py-0.5 text-[10px] font-semibold ${
+                              speechRate === rate
+                                ? "bg-emerald-600 text-white"
+                                : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+                            }`}
+                          >
+                            {rate}x
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   </div>
-                </div>
-              )}
-            </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* 5 Video Concept Templates */}
@@ -557,6 +800,7 @@ export default function DemoPage() {
                   type="button"
                   onClick={() => {
                     setSelectedScriptIndex(idx);
+                    setAchernarAudioUrl(null);
                     reset();
                   }}
                   className={`w-full text-left rounded-xl p-3 transition-all border ${
@@ -577,20 +821,32 @@ export default function DemoPage() {
             {/* Voiceover Script Card with 1-Click Copy */}
             <div className="mt-4 rounded-xl border border-slate-800 bg-slate-950/80 p-3.5">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-semibold text-slate-300">Voiceover Script</span>
+                <span className="text-xs font-semibold text-slate-300">Voiceover Script (Achernar)</span>
                 <button
                   type="button"
                   onClick={copyVoiceoverScript}
                   className="inline-flex items-center gap-1 rounded bg-slate-800 px-2 py-1 text-[10px] font-medium text-slate-300 hover:bg-slate-700 hover:text-white"
                 >
                   {copiedScript ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
-                  {copiedScript ? "Copied!" : "Copy for CapCut/ElevenLabs"}
+                  {copiedScript ? "Copied!" : "Copy Script"}
                 </button>
               </div>
               <div className="space-y-1.5 text-[11px] text-slate-400 leading-relaxed font-mono">
                 <p><span className="text-yellow-400 font-semibold">[0:00]</span> {currentScript.voiceover.hook}</p>
                 <p><span className="text-emerald-400 font-semibold">[0:04]</span> {currentScript.voiceover.action}</p>
                 <p><span className="text-cyan-400 font-semibold">[0:09]</span> {currentScript.voiceover.cta}</p>
+              </div>
+
+              <div className="mt-3 pt-2.5 border-t border-slate-800 flex items-center justify-between">
+                <span className="text-[10px] text-slate-400">Prefer Google AI Studio directly?</span>
+                <a
+                  href="https://aistudio.google.com/"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-[10px] text-emerald-400 hover:underline inline-flex items-center gap-1 font-medium"
+                >
+                  Open AI Studio Voice Library <ExternalLink className="h-2.5 w-2.5" />
+                </a>
               </div>
             </div>
           </div>
