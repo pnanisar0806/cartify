@@ -1,18 +1,28 @@
 "use client";
 
-import { REGION_LIST, type RegionCode } from "@/lib/regions";
+import { REGION_LIST, isValidRegion, type RegionCode } from "@/lib/regions";
 
 /**
- * Compact region selector dropdown for the header.
- * Shows flag + region name, sets a cookie on change and reloads.
+ * Compact region selector for the header.
+ *
+ * Persists the choice in a cookie and reports it upward so the page can swap
+ * stores in place. It deliberately does not reload: a reload would discard a
+ * recipe the visitor had already typed.
  */
-export function RegionSelector({ currentRegion }: { currentRegion: RegionCode }) {
+export function RegionSelector({
+  currentRegion,
+  onRegionChange,
+}: {
+  currentRegion: RegionCode;
+  onRegionChange: (region: RegionCode) => void;
+}) {
   function handleChange(e: React.ChangeEvent<HTMLSelectElement>) {
     const newRegion = e.target.value;
-    // Set cookie (1 year expiry)
+    if (!isValidRegion(newRegion)) return;
+
+    // Remember the choice for a year so the middleware stops re-detecting.
     document.cookie = `cartify-region=${newRegion};path=/;max-age=${60 * 60 * 24 * 365};samesite=lax`;
-    // Reload to re-render with new region's stores
-    window.location.reload();
+    onRegionChange(newRegion);
   }
 
   return (
@@ -24,7 +34,7 @@ export function RegionSelector({ currentRegion }: { currentRegion: RegionCode })
     >
       {REGION_LIST.map((region) => (
         <option key={region.code} value={region.code}>
-          {region.flag} {region.name}
+          {region.name}
         </option>
       ))}
     </select>

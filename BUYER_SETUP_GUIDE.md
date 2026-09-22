@@ -24,7 +24,9 @@ The fastest way to deploy Cartify is using [Vercel](https://vercel.com) (free ti
 3. **Set Environment Variables**:
    In the Vercel deployment screen under **Environment Variables**, add:
    - `OPENROUTER_API_KEY` = your OpenRouter API Key (get free at [openrouter.ai/keys](https://openrouter.ai/keys))
-   - `NEXT_PUBLIC_AMAZON_TAG` = *(Optional)* your Amazon Associates tag (e.g. `yourtag-21`)
+   - `NEXT_PUBLIC_AMAZON_TAG_IN` = *(Optional)* your Amazon Associates tag for India (e.g. `yourtag-21`).
+     Use `NEXT_PUBLIC_AMAZON_TAG_US` and `NEXT_PUBLIC_AMAZON_TAG_UK` for those regions — each Amazon
+     region is a separate programme. See `AFFILIATE_SETUP.md` for every store's variable.
 4. **Click Deploy**:
    - Vercel will build and launch your live site with a free SSL certificate in ~45 seconds!
 
@@ -54,7 +56,7 @@ The fastest way to deploy Cartify is using [Vercel](https://vercel.com) (free ti
    - Open `.env.local` in any text editor and paste your OpenRouter API key:
      ```env
      OPENROUTER_API_KEY=sk-or-v1-...
-     NEXT_PUBLIC_AMAZON_TAG=yourtag-21
+     NEXT_PUBLIC_AMAZON_TAG_IN=yourtag-21
      ```
 4. Start the development server:
    ```bash
@@ -71,7 +73,8 @@ Cartify is pre-configured to generate revenue through grocery affiliate links:
 1. **Amazon Associates (India)**:
    - Sign up at [Amazon Associates India](https://affiliate-program.amazon.in/).
    - Get your tracking tag (e.g., `store-21`).
-   - Add `NEXT_PUBLIC_AMAZON_TAG=store-21` to your Vercel Environment Variables.
+   - Add `NEXT_PUBLIC_AMAZON_TAG_IN=store-21` to your host's Environment Variables.
+     Remember that `NEXT_PUBLIC_` values are baked into the build, so redeploy after changing one.
    - Every time a user clicks **Amazon Fresh** or **Amazon Now**, your affiliate tag is automatically attached.
 
 2. **Swiggy Instamart & Blinkit**:
@@ -100,3 +103,15 @@ Run these commands at any time to verify code health:
 ## 📄 License & Support
 
 Refer to `LICENSE.md` for terms of use. If you need any assistance, reach out via your purchase platform. Happy building!
+
+---
+
+## Further reading
+
+- **`AFFILIATE_SETUP.md`** — every affiliate variable, which programmes accept you
+  immediately versus which need an application, and your disclosure obligations.
+- **`ADSENSE_SETUP.md`** — getting approved, `ads.txt`, consent for EU/UK visitors,
+  and the placement rules that protect your account.
+- **`REPURPOSING_GUIDE.md`** — using the same engine for a different niche, with
+  the exact files to change.
+- **`DEPLOYMENT_AND_MONETIZATION.md`** — hosting options and revenue strategies.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extractRecipeFromHtml, extractUrlFromText, isPublicUrl } from "./url-extractor";
+import { extractRecipeFromHtml, extractUrlFromText, isPublicUrl, isPrivateAddress } from "./url-extractor";
 
 describe("URL Extractor & SSRF Guard", () => {
   it("detects valid http/https URLs from input text", () => {
@@ -11,6 +11,52 @@ describe("URL Extractor & SSRF Guard", () => {
     );
     expect(extractUrlFromText("2 cups flour, 1 egg, 1 cup milk")).toBeNull();
     expect(extractUrlFromText("ftp://ftp.example.com/file")).toBeNull();
+  });
+
+  it("prefers pasted content over a cited source link", () => {
+    // A short lead-in still means "fetch this link".
+    expect(extractUrlFromText("Cook this tonight: http://myrecipes.com/soup")).toBe(
+      "http://myrecipes.com/soup"
+    );
+    // A full ingredient list that happens to cite its source is the recipe.
+    const pasted = [
+      "200g spaghetti",
+      "3 ripe tomatoes, chopped",
+      "2 cloves garlic",
+      "fresh basil leaves",
+      "extra virgin olive oil",
+      "source: https://myrecipes.com/soup",
+    ].join("\n");
+    expect(extractUrlFromText(pasted)).toBeNull();
+  });
+
+  it("blocks IPv6 loopback, unique-local and link-local addresses", () => {
+    expect(isPublicUrl("http://[::1]/")).toBe(false);
+    expect(isPublicUrl("http://[::ffff:127.0.0.1]/")).toBe(false);
+    expect(isPublicUrl("http://[fd00::1]/")).toBe(false);
+    expect(isPublicUrl("http://[fe80::1]/")).toBe(false);
+    expect(isPublicUrl("http://[::]/")).toBe(false);
+  });
+
+  it("blocks further reserved IPv4 ranges", () => {
+    expect(isPublicUrl("http://100.64.0.1/")).toBe(false);
+    expect(isPublicUrl("http://198.18.0.1/")).toBe(false);
+    expect(isPublicUrl("http://224.0.0.1/")).toBe(false);
+    expect(isPublicUrl("http://192.0.0.1/")).toBe(false);
+  });
+
+  it("blocks internal-looking hostnames", () => {
+    expect(isPublicUrl("http://db.internal/")).toBe(false);
+    expect(isPublicUrl("http://printer.local/")).toBe(false);
+    expect(isPublicUrl("http://router.home.arpa/")).toBe(false);
+  });
+
+  it("classifies addresses directly", () => {
+    expect(isPrivateAddress("10.1.2.3")).toBe(true);
+    expect(isPrivateAddress("[::1]")).toBe(true);
+    expect(isPrivateAddress("fe80::1%eth0")).toBe(true);
+    expect(isPrivateAddress("8.8.8.8")).toBe(false);
+    expect(isPrivateAddress("2606:4700::1111")).toBe(false);
   });
 
   it("blocks private/internal IP addresses and localhost (SSRF protection)", () => {

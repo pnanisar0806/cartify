@@ -117,12 +117,43 @@ Cartify can generate revenue through two complementary paths:
 
 ### Strategy 2: Operating as a Consumer Web App
 
-#### 1. Grocery Delivery Affiliate Commissions (Passive Revenue)
-- Join affiliate aggregator networks:
-  - **Cuelinks** (covers Swiggy, Blinkit, Zepto, BigBasket in India)
-  - **EarnKaro** / **Impact** / **Amazon Associates**
-- Whenever a user clicks "Swiggy Instamart" or "Blinkit" and completes their grocery cart checkout, you earn a **2% – 8% commission** on the basket total.
-- With an average grocery basket of ₹500 – ₹1,500, each conversion yields ₹20 – ₹120.
+#### 1. Grocery Affiliate Commissions (Passive Revenue)
+
+Read this before forecasting income: which retailers you can earn from depends
+entirely on which programmes accept you, and two of the Indian partners have no
+programme at all.
+
+**Self-serve, approved quickly**
+- **Amazon Associates** — one account per region. An `amazon.in` tag earns
+  nothing on `amazon.com`, so register separately for each region you serve.
+  Amazon also closes accounts with no qualifying sale within 180 days, so sign
+  up once you have traffic.
+
+**Application required, usually with a live site**
+- **Impact** (impact.com) — Instacart, Walmart, Target.
+- **Awin** (awin.com) — Tesco, Sainsbury's, Ocado.
+  You apply to the network, then separately to each retailer. Expect days to
+  weeks, and expect rejection if your site is an empty deployment.
+
+**No affiliate programme exists**
+- **Swiggy Instamart** and **Blinkit** run no public affiliate programme. Their
+  links are deliberately left clean rather than carrying a parameter that would
+  silently earn nothing. Cashback networks such as **Cuelinks** or **EarnKaro**
+  sometimes carry these merchants; if you hold an account with one, set
+  `NEXT_PUBLIC_AFFILIATE_TEMPLATE` and it applies to them too. Rates are lower
+  than a direct relationship and the merchant can be dropped at any time.
+
+**Realistic rates.** Commission runs roughly 1–10% by category, with groceries at
+the low end, and the shopper must complete a purchase inside the programme's
+cookie window — 24 hours for Amazon, longer for most networks. A search link
+also converts less well than a direct product link, which is the deliberate
+trade-off Cartify makes so links never rot when a product is delisted. Measure
+your own conversion rate before projecting income.
+
+**Disclosure is mandatory**, not optional. The FTC (US) and ASA (UK) both
+require a clear statement that you earn commission, placed where the visitor
+sees it before clicking — not in a footer. Amazon additionally requires you to
+state that you are an Amazon Associate. Cartify does not add this for you.
 
 #### 2. Pro Tier Subscription (Freemium Model)
 - **Free Tier:** 5 recipe conversions per day.

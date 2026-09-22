@@ -94,7 +94,7 @@ export default function Home() {
           <a href="/" className="flex items-center gap-2.5 text-2xl font-bold tracking-tight"><ShoppingBasket className="text-primary" aria-hidden="true" />Cartify<span className="text-primary">.</span></a>
           <div className="flex items-center gap-4">
             <span className="hidden text-sm text-slate-500 sm:block">Less searching. More cooking.</span>
-            <RegionSelector currentRegion={region} />
+            <RegionSelector currentRegion={region} onRegionChange={setRegion} />
           </div>
         </div>
       </header>

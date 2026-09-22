@@ -2,7 +2,11 @@ import type { Metadata } from "next";
 import Script from "next/script";
 import "./globals.css";
 
-export const metadata: Metadata = { title: "Cartify | From recipe to groceries", description: "Turn recipe ingredients into shopping links for Swiggy Instamart and Blinkit." };
+export const metadata: Metadata = {
+  title: "Cartify | From recipe to groceries",
+  description:
+    "Paste a recipe or a recipe link and get one-click grocery searches at the stores you shop, across India, the US and the UK.",
+};
 
 const adsensePubId = process.env.NEXT_PUBLIC_ADSENSE_PUB_ID;
 

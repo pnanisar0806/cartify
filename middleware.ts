@@ -31,6 +31,33 @@ function regionFromAcceptLanguage(header: string | null): string | null {
   return null;
 }
 
+/**
+ * Reads the visitor's country from whichever geo header the host provides.
+ * Each platform uses its own, so a deployment on Netlify, Cloudflare or Fly
+ * detects the region just as a Vercel deployment does.
+ */
+function countryFromHeaders(request: NextRequest): string | null {
+  const direct =
+    request.headers.get("x-vercel-ip-country") || // Vercel
+    request.headers.get("cf-ipcountry") || // Cloudflare
+    request.headers.get("x-country") || // Netlify and some proxies
+    request.headers.get("fly-client-ip-country"); // Fly.io
+  if (direct) return direct;
+
+  // Netlify also exposes richer geo data as JSON.
+  const netlifyGeo = request.headers.get("x-nf-geo");
+  if (netlifyGeo) {
+    try {
+      const parsed = JSON.parse(netlifyGeo) as { country?: { code?: string } };
+      if (parsed?.country?.code) return parsed.country.code;
+    } catch {
+      // Malformed header — fall through to language detection.
+    }
+  }
+
+  return null;
+}
+
 export function middleware(request: NextRequest) {
   const existing = request.cookies.get(COOKIE_NAME)?.value;
 
@@ -39,12 +66,12 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // 1. Try Vercel's geo header (free on Vercel deployments)
-  const vercelCountry = request.headers.get("x-vercel-ip-country");
-  let region = countryToRegion(vercelCountry);
+  // 1. Try the hosting platform's geo header
+  const detectedCountry = countryFromHeaders(request);
+  let region = countryToRegion(detectedCountry);
 
-  // 2. If Vercel header missing (local dev), try Accept-Language
-  if (!vercelCountry) {
+  // 2. If no geo header is present (local dev, plain Node host), try Accept-Language
+  if (!detectedCountry) {
     const fromLang = regionFromAcceptLanguage(request.headers.get("accept-language"));
     if (fromLang) region = fromLang;
   }
