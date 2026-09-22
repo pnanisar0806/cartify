@@ -128,11 +128,11 @@ const usStores: StoreConfig[] = [
   },
   {
     id: "amazon-fresh-us",
-    name: "Amazon Fresh",
+    name: "Amazon Grocery",
     logoComponent: "AmazonFreshUSLogo",
     getUrl: (ingredient) =>
       withAmazonTag(
-        `https://www.amazon.com/s?k=${encodeURIComponent(ingredient)}&i=amazonfresh`,
+        `https://www.amazon.com/s?k=${encodeURIComponent(ingredient)}&i=grocery`,
         process.env.NEXT_PUBLIC_AMAZON_TAG_US
       ),
     buttonStyles: {
@@ -203,7 +203,7 @@ const ukStores: StoreConfig[] = [
     // Ocado runs through Awin. Paste your Awin deep link as the template.
     getUrl: (ingredient) =>
       withTemplate(
-        `https://www.ocado.com/search?entry=${encodeURIComponent(ingredient)}`,
+        `https://www.ocado.com/search?q=${encodeURIComponent(ingredient)}`,
         process.env.NEXT_PUBLIC_AFFILIATE_OCADO
       ),
     buttonStyles: {
@@ -214,11 +214,11 @@ const ukStores: StoreConfig[] = [
   },
   {
     id: "amazon-fresh-uk",
-    name: "Amazon Fresh",
+    name: "Amazon Grocery",
     logoComponent: "AmazonFreshUKLogo",
     getUrl: (ingredient) =>
       withAmazonTag(
-        `https://www.amazon.co.uk/s?k=${encodeURIComponent(ingredient)}&i=amazonfresh`,
+        `https://www.amazon.co.uk/s?k=${encodeURIComponent(ingredient)}&i=grocery`,
         process.env.NEXT_PUBLIC_AMAZON_TAG_UK
       ),
     buttonStyles: {

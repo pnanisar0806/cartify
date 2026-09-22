@@ -109,6 +109,20 @@ describe("network-backed stores", () => {
 });
 
 describe("Amazon tags are per region", () => {
+  it("uses a search index that resolves regardless of Fresh availability", () => {
+    // i=amazonfresh returns "not available for this location" for shoppers
+    // without Amazon Fresh, and UK Fresh stores closed at the end of 2025.
+    expect(store("US", "amazon-fresh-us").getUrl("milk")).toContain("i=grocery");
+    expect(store("UK", "amazon-fresh-uk").getUrl("milk")).toContain("i=grocery");
+    expect(store("US", "amazon-fresh-us").getUrl("milk")).not.toContain("amazonfresh");
+    expect(store("UK", "amazon-fresh-uk").getUrl("milk")).not.toContain("amazonfresh");
+  });
+
+  it("uses Ocado's real search parameter", () => {
+    // ?entry= silently redirects to /categories without searching.
+    expect(store("UK", "ocado").getUrl("milk")).toBe("https://www.ocado.com/search?q=milk");
+  });
+
   it("appends the matching regional tag", () => {
     process.env.NEXT_PUBLIC_AMAZON_TAG_IN = "cartify-21";
     process.env.NEXT_PUBLIC_AMAZON_TAG_US = "cartify-20";
