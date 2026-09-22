@@ -4,3 +4,8 @@
 
 body { margin: 0; background: #f6f9f7; color: #183c31; font-family: "Segoe UI", Arial, sans-serif; }
 ::selection { background: #c5e9d6; }
+
+/* AdSense container styling */
+.ad-container { display: flex; align-items: center; justify-content: center; }
+.ad-container ins { max-width: 100%; }
+.ad-sidebar { position: sticky; top: 1rem; }
