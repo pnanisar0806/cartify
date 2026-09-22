@@ -43,15 +43,26 @@ These are build-time values. Change one and redeploy.
 
 ### ads.txt
 
-Create `public/ads.txt` with one line carrying your own publisher ID:
+One line, carrying your own publisher ID:
 
 ```
 google.com, pub-0000000000000000, DIRECT, f08c47fec0942fa0
 ```
 
-Note the format difference: `pub-` here, not `ca-pub-`. Next.js serves `public/` at the site root, so this lands at `yoursite.com/ads.txt`, which is where Google looks.
+Note the format difference: `pub-` here, not `ca-pub-`.
 
-Skipping it does not block ads, but it limits which advertisers bid on your inventory, which directly lowers revenue.
+**Where it goes depends on how you deploy, and this catches people out.**
+
+*App on a root domain* (`example.com`): put it in `public/ads.txt`. Next.js serves
+`public/` at the site root, so it lands at `example.com/ads.txt`.
+
+*App on a subdomain* (`app.example.com`): Google reads **`example.com/ads.txt`**, the
+root domain, not the subdomain's copy. A file in this app's `public/` folder would be
+served at `app.example.com/ads.txt`, where nothing looks for it. Put it on whatever
+serves your root domain instead. One file there covers every subdomain you run.
+
+Skipping it does not block ads, but it limits which advertisers bid on your inventory,
+which directly lowers revenue.
 
 ### Consent for EU and UK visitors
 
