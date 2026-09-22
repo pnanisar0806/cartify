@@ -143,7 +143,18 @@ export default function Home() {
                 No grocery ingredients found. Try pasting a recipe with an ingredient list.
               </p>
             ) : (
-              <ul className="divide-y divide-green-900/10 overflow-hidden rounded-xl border border-green-900/10 bg-white">
+              <>
+                {/* Affiliate disclosure. Required by the Amazon Associates
+                    Operating Agreement, by the FTC in the US, the ASA in the UK
+                    and ASCI in India. It must be visible BEFORE the shopper
+                    clicks an outbound link, so it sits above the list rather
+                    than in the footer. Do not remove it while store links carry
+                    affiliate tracking. */}
+                <p className="mb-3 text-xs leading-5 text-slate-500">
+                  Some store links are affiliate links. As an Amazon Associate we earn from
+                  qualifying purchases. This costs you nothing extra.
+                </p>
+                <ul className="divide-y divide-green-900/10 overflow-hidden rounded-xl border border-green-900/10 bg-white">
                 {ingredients.map((ingredient, index) => (
                   <li key={`${ingredient}-${index}`} className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between">
                     <span className="flex min-w-0 items-center gap-3 font-medium">
@@ -176,7 +187,8 @@ export default function Home() {
                     </div>
                   </li>
                 ))}
-              </ul>
+                </ul>
+              </>
             )}
           </section>
 
