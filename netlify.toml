@@ -1,0 +1,7 @@
+# Studio deployment only. Not shipped in buyer packages (see the package script's include list).
+# Sends the default Netlify address to the custom domain. Deploy previews use other hostnames and are unaffected.
+[[redirects]]
+  from = "https://craftory-cartify.netlify.app/*"
+  to = "https://cartify.craftorytool.com/:splat"
+  status = 301
+  force = true
