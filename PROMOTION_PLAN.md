@@ -47,7 +47,7 @@ Not Next.js hobbyists. People who want an affiliate site without building one. T
 
 ### Rules
 
-**Lead with the demo, never the listing.** `cartify-echodigi.vercel.app` does in ten seconds what a paragraph cannot. Every post links the demo; the demo's footer links the product page.
+**Lead with the demo, never the listing.** `cartify.craftorytool.com` does in ten seconds what a paragraph cannot. Every post links the demo; the demo's footer links the product page.
 
 **Use the reels.** The Founder bundle contains five finished vertical reels with voiceover, subtitles, thumbnails and a caption guide. They are built and unused. They sell the app, which sells the source.
 
